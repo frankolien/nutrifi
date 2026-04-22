@@ -1,0 +1,136 @@
+/*
+ * Base styles.
+ *
+ * Everything here is either a CSS-level concern Tailwind can't express
+ * (reset, font loading, scrollbar) or a primitive we reuse across
+ * components (`.hairline`, `.num`). If you find yourself reaching for
+ * a utility class dozens of times, promote it here rather than letting
+ * JSX bloat.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------- Font loading -----------------
+ * Hand-written @font-face so we control which weights are loaded —
+ * fewer weights = smaller first paint. Inter 400/500/600; Mono 400/500.
+ */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("https://rsms.me/inter/font-files/InterVariable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/jetbrainsmono/v20/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTNh8.woff2")
+    format("woff2");
+}
+
+/* ---------------- Reset ------------------------ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-fg font-sans;
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01", "ss03", "liga", "calt";
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+/* ---------------- Scrollbar -------------------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ---------------- Selection -------------------- */
+::selection {
+  background: rgba(107, 191, 138, 0.25);
+  color: #fafafa;
+}
+
+/* ---------------- Utilities -------------------- */
+@layer components {
+  /* Tabular numerics — every dollar amount, balance, ratio should read as
+   * mono / tabular. Prevents the digits from dancing as values update. */
+  .num {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "cv11" on;
+  }
+
+  /* Tiny all-caps label used above numbers and sections. */
+  .eyebrow {
+    @apply text-2xs uppercase tracking-[0.12em] text-fg-subtle font-mono;
+  }
+
+  /* One-pixel divider */
+  .hairline {
+    @apply border-border;
+  }
+}
+
+/* Remove wallet-adapter-ui's default styles where they conflict. The
+ * library injects a stylesheet; we override just enough to match our
+ * palette without fighting it. */
+.wallet-adapter-button-trigger {
+  @apply bg-accent text-bg rounded text-sm font-medium !important;
+  padding: 10px 16px !important;
+  height: auto !important;
+  line-height: 1 !important;
+  font-family: "Inter", sans-serif !important;
+}
+.wallet-adapter-button-trigger:hover {
+  @apply bg-accent !important;
+  opacity: 0.9;
+}
