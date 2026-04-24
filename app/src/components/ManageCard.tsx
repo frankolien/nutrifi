@@ -146,7 +146,7 @@ function StakePanel() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <span className="eyebrow">
           {mode === "stake" ? "You stake" : "You unstake"}
         </span>
@@ -187,7 +187,7 @@ function StakePanel() {
         <AnimatedNumber
           value={receive}
           format={(v) => formatToken(v, 4)}
-          className="num flex-1 min-w-0 text-3xl font-medium tabular-nums text-fg"
+          className="num flex-1 min-w-0 text-2xl sm:text-3xl font-medium tabular-nums text-fg truncate"
         />
         <TokenBadge symbol={toSym} />
       </div>
@@ -392,28 +392,32 @@ function BorrowPanel() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
         <span className="eyebrow">
           {mode === "deposit" && "You deposit"}
           {mode === "withdraw" && "You withdraw"}
           {mode === "borrow" && "You borrow"}
           {mode === "repay" && "You repay"}
         </span>
-        <SegmentedControl<BorrowMode>
-          size="sm"
-          value={mode}
-          onChange={(next) => {
-            setMode(next);
-            setAmount("");
-            setTxStatus({ kind: "idle" });
-          }}
-          options={[
-            { value: "deposit", label: "Deposit" },
-            { value: "borrow", label: "Borrow" },
-            { value: "repay", label: "Repay" },
-            { value: "withdraw", label: "Withdraw" },
-          ]}
-        />
+        <div className="-mx-1 overflow-x-auto sm:overflow-visible sm:mx-0">
+          <div className="inline-flex px-1 sm:px-0">
+            <SegmentedControl<BorrowMode>
+              size="sm"
+              value={mode}
+              onChange={(next) => {
+                setMode(next);
+                setAmount("");
+                setTxStatus({ kind: "idle" });
+              }}
+              options={[
+                { value: "deposit", label: "Deposit" },
+                { value: "borrow", label: "Borrow" },
+                { value: "repay", label: "Repay" },
+                { value: "withdraw", label: "Withdraw" },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
       <AmountInput

@@ -83,7 +83,7 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="num flex-1 min-w-0 text-3xl font-medium tabular-nums placeholder:text-fg-dim"
+            className="num flex-1 min-w-0 text-2xl sm:text-3xl font-medium tabular-nums placeholder:text-fg-dim bg-transparent"
             {...rest}
           />
           <div className="flex items-center gap-2">{tokenBadge}</div>

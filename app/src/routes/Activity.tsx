@@ -65,17 +65,18 @@ export default function Activity() {
         description="Every action you've taken on NutriFi, newest first. Click a row to open it in Solana Explorer."
       />
 
-      <SegmentedControl<Filter>
-        value={filter}
-        onChange={setFilter}
-        options={[
-          { value: "all", label: "All" },
-          { value: "collateral", label: "Collateral" },
-          { value: "debt", label: "Debt" },
-          { value: "liquidate", label: "Liquidate" },
-        ]}
-        className="mb-6"
-      />
+      <div className="mb-6 -mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+        <SegmentedControl<Filter>
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: "All" },
+            { value: "collateral", label: "Collateral" },
+            { value: "debt", label: "Debt" },
+            { value: "liquidate", label: "Liquidate" },
+          ]}
+        />
+      </div>
 
       <Card>
         {isLoading && rows.length === 0 ? (
@@ -105,25 +106,37 @@ export default function Activity() {
             />
           )
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="eyebrow text-left border-b border-border">
-                <th className="px-6 py-4 font-normal">When</th>
-                <th className="px-6 py-4 font-normal">Action</th>
-                <th className="px-6 py-4 font-normal">Detail</th>
-                <th className="px-6 py-4 font-normal text-right">Signature</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, i) => (
-                <Row
-                  key={r.signature}
-                  item={r}
-                  isLast={i === filtered.length - 1}
-                />
+          <>
+            {/* Mobile: stacked cards (rendered as <li> inside <ul>) */}
+            <ul className="md:hidden divide-y divide-border">
+              {filtered.map((r) => (
+                <MobileRow key={r.signature} item={r} />
               ))}
-            </tbody>
-          </table>
+            </ul>
+
+            {/* Desktop: table */}
+            <table className="hidden md:table w-full">
+              <thead>
+                <tr className="eyebrow text-left border-b border-border">
+                  <th className="px-6 py-4 font-normal">When</th>
+                  <th className="px-6 py-4 font-normal">Action</th>
+                  <th className="px-6 py-4 font-normal">Detail</th>
+                  <th className="px-6 py-4 font-normal text-right">
+                    Signature
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => (
+                  <Row
+                    key={r.signature}
+                    item={r}
+                    isLast={i === filtered.length - 1}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </Card>
     </div>
@@ -195,6 +208,34 @@ function ClockIcon() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function MobileRow({ item }: { item: ActivityItem }) {
+  const explorer = `https://explorer.solana.com/tx/${item.signature}?cluster=custom&customUrl=${encodeURIComponent(CONFIG.cluster)}`;
+  return (
+    <li
+      className="px-4 py-3 hover:bg-fg/[0.02] transition-colors cursor-pointer"
+      onClick={() => window.open(explorer, "_blank", "noreferrer")}
+    >
+      <div className="flex items-baseline justify-between mb-1">
+        <span className={`${KIND_ACCENT[item.kind]} text-sm font-medium`}>
+          {KIND_LABEL[item.kind]}
+          {!item.success && (
+            <span className="ml-2 text-alert/70 text-[10px] uppercase tracking-wider">
+              failed
+            </span>
+          )}
+        </span>
+        <span className="text-xs text-fg-muted num">
+          {item.tsSec ? relativeTime(item.tsSec) : "pending"}
+        </span>
+      </div>
+      <div className="text-xs text-fg-muted num truncate">{item.summary}</div>
+      <div className="num text-[10px] text-fg-subtle mt-1">
+        {shortAddress(item.signature, 6)} ↗
+      </div>
+    </li>
   );
 }
 

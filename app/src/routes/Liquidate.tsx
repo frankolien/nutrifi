@@ -54,39 +54,57 @@ export default function Liquidate() {
             </div>
           </Card>
         ) : (
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="eyebrow text-left border-b border-border">
-                    <th className="px-6 py-4 font-normal">Borrower</th>
-                    <th className="px-6 py-4 font-normal text-right">
-                      Collateral
-                    </th>
-                    <th className="px-6 py-4 font-normal text-right">Debt</th>
-                    <th className="px-6 py-4 font-normal text-right">Health</th>
-                    <th className="px-6 py-4 font-normal text-right">
-                      Max repay
-                    </th>
-                    <th className="px-6 py-4 font-normal text-right">
-                      Est. profit
-                    </th>
-                    <th className="px-6 py-4 font-normal" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {opportunities.map((op, i) => (
-                    <OpportunityRow
-                      key={op.userLoanPda.toBase58()}
-                      op={op}
-                      isLast={i === opportunities.length - 1}
-                      onAfter={() => refetch()}
-                    />
-                  ))}
-                </tbody>
-              </table>
+          <>
+            {/* Mobile: card stack */}
+            <div className="md:hidden grid gap-3">
+              {opportunities.map((op) => (
+                <MobileOpportunityCard
+                  key={op.userLoanPda.toBase58()}
+                  op={op}
+                  onAfter={() => refetch()}
+                />
+              ))}
             </div>
-          </Card>
+
+            {/* Desktop: table */}
+            <Card className="hidden md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="eyebrow text-left border-b border-border">
+                      <th className="px-6 py-4 font-normal">Borrower</th>
+                      <th className="px-6 py-4 font-normal text-right">
+                        Collateral
+                      </th>
+                      <th className="px-6 py-4 font-normal text-right">
+                        Debt
+                      </th>
+                      <th className="px-6 py-4 font-normal text-right">
+                        Health
+                      </th>
+                      <th className="px-6 py-4 font-normal text-right">
+                        Max repay
+                      </th>
+                      <th className="px-6 py-4 font-normal text-right">
+                        Est. profit
+                      </th>
+                      <th className="px-6 py-4 font-normal" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opportunities.map((op, i) => (
+                      <OpportunityRow
+                        key={op.userLoanPda.toBase58()}
+                        op={op}
+                        isLast={i === opportunities.length - 1}
+                        onAfter={() => refetch()}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </>
         )}
       </section>
 
@@ -103,6 +121,99 @@ export default function Liquidate() {
         </Card>
       </section>
     </div>
+  );
+}
+
+function useLiquidate(op: Opportunity, onAfter: () => void) {
+  const sendTx = useSendTx();
+  const { publicKey } = useActiveSigner();
+  const [err, setErr] = useState<string | null>(null);
+
+  const onLiquidate = async () => {
+    if (!publicKey) return;
+    setErr(null);
+    try {
+      const repayLamports = BigInt(
+        Math.floor(op.maxRepayUsdc * 10 ** USDC_DECIMALS),
+      );
+      await sendTx.mutateAsync({
+        instructions: [
+          buildLiquidateIx(
+            publicKey,
+            op.borrower,
+            op.userLoanPda,
+            repayLamports,
+          ),
+        ],
+        ensureAtasFor: [CONFIG.debtMint, CONFIG.collateralMint],
+      });
+      onAfter();
+    } catch (e) {
+      setErr(humanizeError(e));
+    }
+  };
+
+  return { onLiquidate, isPending: sendTx.isPending, err };
+}
+
+function MobileOpportunityCard({
+  op,
+  onAfter,
+}: {
+  op: Opportunity;
+  onAfter: () => void;
+}) {
+  const { onLiquidate, isPending, err } = useLiquidate(op, onAfter);
+  return (
+    <Card>
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="num text-sm">
+            {shortAddress(op.borrower.toBase58(), 4)}
+          </span>
+          <span className="num text-sm text-alert">
+            <AnimatedNumber
+              value={op.healthFactor}
+              format={(v) => `${v.toFixed(2)}×`}
+            />
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-4">
+          <div>
+            <div className="eyebrow mb-0.5">Collateral</div>
+            <div className="num">
+              {formatToken(op.collateralNsol, 3)}{" "}
+              <span className="text-fg-muted">nSOL</span>
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow mb-0.5">Debt</div>
+            <div className="num">${formatUsd(op.debtUsdc)}</div>
+          </div>
+          <div>
+            <div className="eyebrow mb-0.5">Max repay</div>
+            <div className="num">${formatUsd(op.maxRepayUsdc)}</div>
+          </div>
+          <div>
+            <div className="eyebrow mb-0.5">Est. profit</div>
+            <div className="num text-accent">
+              +${formatUsd(op.estimatedProfitUsd)}
+            </div>
+          </div>
+        </div>
+        <Button
+          variant="primary"
+          className="w-full h-10 text-sm"
+          onClick={onLiquidate}
+          disabled={isPending}
+        >
+          {isPending ? "…" : "Liquidate"}
+        </Button>
+        {err && (
+          <div className="mt-2 text-xs text-alert text-center">{err}</div>
+        )}
+      </div>
+    </Card>
   );
 }
 

@@ -39,7 +39,7 @@ export function SegmentedControl<T extends string>({
             type="button"
             onClick={() => onChange(opt.value)}
             className={cx(
-              "relative z-10 rounded px-4 font-medium transition-colors",
+              "relative z-10 rounded px-3 sm:px-4 font-medium transition-colors",
               size === "sm" ? "h-7 text-xs" : "h-8 text-sm",
               active
                 ? "bg-fg/[0.08] text-fg"
