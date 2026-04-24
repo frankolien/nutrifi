@@ -1,56 +1,58 @@
 import { useMemo, useState } from "react";
-import { useMockStore } from "@/mock/data";
-import { formatToken, relativeTime } from "@/lib/format";
+import {
+  useRecentActivity,
+  ActivityKind,
+  ActivityItem,
+} from "@/hooks/useRecentActivity";
+import { CONFIG } from "@/lib/config";
+import { relativeTime, shortAddress } from "@/lib/format";
 import { PageHeader } from "@/components/layout";
-import { Card, SegmentedControl, TokenMark } from "@/components/primitives";
-import type { ActivityKind } from "@/types";
+import { Card, SegmentedControl } from "@/components/primitives";
 
 /**
- * Activity — your own transaction history.
+ * Activity — full list of the signer's on-chain actions.
  *
- * Segmented filter at top matches the rest of the site's chrome.
- * Rows show the action kind as a colored chip so scanning the list
- * at speed is easy.
+ * Data source: `getSignaturesForAddress` on the user's UserLoan PDA
+ * (every deposit/borrow/repay/withdraw/liquidate touches it), then one
+ * `getTransaction` per sig to classify + extract the program log.
+ *
+ * Limited to the last 50 sigs. For a real indexer the loan PDA would
+ * land in a postgres row the moment the program emits it.
  */
 
-type Filter = "all" | "stake" | "borrow" | "rewards" | "liquidate";
+type Filter = "all" | "collateral" | "debt" | "liquidate";
 
-const FILTER_MAP: Record<Filter, ActivityKind[] | null> = {
+const FILTER_KINDS: Record<Filter, ActivityKind[] | null> = {
   all: null,
-  stake: ["stake", "unstake"],
-  borrow: ["borrow", "repay", "deposit", "withdraw"],
-  rewards: ["claim"],
+  collateral: ["deposit", "withdraw"],
+  debt: ["borrow", "repay"],
   liquidate: ["liquidate"],
 };
 
 const KIND_LABEL: Record<ActivityKind, string> = {
-  stake: "Staked",
-  unstake: "Unstaked",
-  deposit: "Deposited",
-  withdraw: "Withdrew",
-  borrow: "Borrowed",
-  repay: "Repaid",
-  claim: "Claimed",
-  liquidate: "Liquidated",
+  deposit: "Deposit",
+  withdraw: "Withdraw",
+  borrow: "Borrow",
+  repay: "Repay",
+  liquidate: "Liquidate",
+  other: "Other",
 };
 
 const KIND_ACCENT: Record<ActivityKind, string> = {
-  stake: "text-accent",
-  unstake: "text-fg",
   deposit: "text-accent",
   withdraw: "text-fg",
   borrow: "text-fg",
   repay: "text-accent",
-  claim: "text-accent",
   liquidate: "text-alert",
+  other: "text-fg-muted",
 };
 
 export default function Activity() {
-  const rows = useMockStore((s) => s.activity);
+  const { data: rows = [], isLoading } = useRecentActivity(50);
   const [filter, setFilter] = useState<Filter>("all");
 
   const filtered = useMemo(() => {
-    const kinds = FILTER_MAP[filter];
+    const kinds = FILTER_KINDS[filter];
     if (!kinds) return rows;
     return rows.filter((r) => kinds.includes(r.kind));
   }, [rows, filter]);
@@ -60,7 +62,7 @@ export default function Activity() {
       <PageHeader
         eyebrow="Activity"
         title="Your transactions"
-        description="Every action you've taken on NutriFi, newest first."
+        description="Every action you've taken on NutriFi, newest first. Click a row to open it in Solana Explorer."
       />
 
       <SegmentedControl<Filter>
@@ -68,9 +70,8 @@ export default function Activity() {
         onChange={setFilter}
         options={[
           { value: "all", label: "All" },
-          { value: "stake", label: "Stake" },
-          { value: "borrow", label: "Borrow" },
-          { value: "rewards", label: "Rewards" },
+          { value: "collateral", label: "Collateral" },
+          { value: "debt", label: "Debt" },
           { value: "liquidate", label: "Liquidate" },
         ]}
         className="mb-6"
@@ -82,12 +83,21 @@ export default function Activity() {
             <tr className="eyebrow text-left border-b border-border">
               <th className="px-6 py-4 font-normal">When</th>
               <th className="px-6 py-4 font-normal">Action</th>
-              <th className="px-6 py-4 font-normal text-right">Amount</th>
+              <th className="px-6 py-4 font-normal">Detail</th>
               <th className="px-6 py-4 font-normal text-right">Signature</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {isLoading && rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-6 py-16 text-center text-sm text-fg-muted"
+                >
+                  Loading your activity…
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td
                   colSpan={4}
@@ -98,45 +108,49 @@ export default function Activity() {
               </tr>
             ) : (
               filtered.map((r, i) => (
-                <tr
-                  key={r.id}
-                  className={
-                    (i < filtered.length - 1
-                      ? "border-b border-border "
-                      : "") +
-                    "group hover:bg-fg/[0.02] transition-colors"
-                  }
-                >
-                  <td className="px-6 py-4 text-xs text-fg-muted whitespace-nowrap">
-                    {relativeTime(r.tsSec)}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <span className={KIND_ACCENT[r.kind]}>
-                      {KIND_LABEL[r.kind]}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="inline-flex items-center gap-2 justify-end">
-                      <span className="num text-sm">
-                        {formatToken(r.amount, 4)}
-                      </span>
-                      <TokenMark symbol={r.asset} size={18} />
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <a
-                      href="#"
-                      className="num text-xs text-fg-muted hover:text-fg transition-colors"
-                    >
-                      {r.signature}
-                    </a>
-                  </td>
-                </tr>
+                <Row
+                  key={r.signature}
+                  item={r}
+                  isLast={i === filtered.length - 1}
+                />
               ))
             )}
           </tbody>
         </table>
       </Card>
     </div>
+  );
+}
+
+function Row({ item, isLast }: { item: ActivityItem; isLast: boolean }) {
+  const explorer = `https://explorer.solana.com/tx/${item.signature}?cluster=custom&customUrl=${encodeURIComponent(CONFIG.cluster)}`;
+  return (
+    <tr
+      className={
+        (isLast ? "" : "border-b border-border ") +
+        "group hover:bg-fg/[0.02] transition-colors cursor-pointer"
+      }
+      onClick={() => window.open(explorer, "_blank", "noreferrer")}
+    >
+      <td className="px-6 py-4 text-xs text-fg-muted whitespace-nowrap">
+        {item.tsSec ? relativeTime(item.tsSec) : "pending"}
+      </td>
+      <td className="px-6 py-4 text-sm">
+        <span className={KIND_ACCENT[item.kind]}>{KIND_LABEL[item.kind]}</span>
+        {!item.success && (
+          <span className="ml-2 text-alert/70 text-[10px] uppercase tracking-wider">
+            failed
+          </span>
+        )}
+      </td>
+      <td className="px-6 py-4 text-xs text-fg-muted num truncate max-w-[32rem]">
+        {item.summary}
+      </td>
+      <td className="px-6 py-4 text-right">
+        <span className="num text-xs text-fg-muted group-hover:text-fg transition-colors">
+          {shortAddress(item.signature, 6)} ↗
+        </span>
+      </td>
+    </tr>
   );
 }

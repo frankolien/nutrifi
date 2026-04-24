@@ -11,9 +11,11 @@
     "test:skip-build": "anchor test --skip-build",
     "build": "anchor build",
     "bootstrap": "ts-node --transpile-only scripts/bootstrap-market.ts",
+    "bootstrap-all": "ts-node --transpile-only scripts/bootstrap-all.ts",
     "seed-borrower": "ts-node --transpile-only scripts/seed-borrower.ts",
     "fund-liquidator": "ts-node --transpile-only scripts/fund-liquidator.ts",
-    "push-price": "ts-node --transpile-only scripts/push-price.ts"
+    "push-price": "ts-node --transpile-only scripts/push-price.ts",
+    "mint-nsol-to": "ts-node --transpile-only scripts/mint-nsol-to.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

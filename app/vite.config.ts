@@ -18,6 +18,16 @@ export default defineConfig({
   },
   define: {
     global: "globalThis",
+    "process.env": "{}",
+  },
+  optimizeDeps: {
+    // Force the browser-entry for `buffer` + `process` so they ship
+    // real polyfills instead of the Node stubs Rollup might pick.
+    esbuildOptions: {
+      define: {
+        global: "globalThis",
+      },
+    },
   },
   server: {
     port: 5173,

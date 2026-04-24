@@ -1,7 +1,19 @@
 import { useMemo, useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useMockStore } from "@/mock/data";
+import { useUserPosition } from "@/hooks/useUserPosition";
+import { useProtocolStats } from "@/hooks/useProtocolStats";
+import { useSendTx, useActiveSigner } from "@/hooks/useSendTx";
 import { evaluateHealth } from "@/lib/health";
 import { formatPct, formatToken, formatUsd } from "@/lib/format";
+import { CONFIG, USDC_DECIMALS } from "@/lib/config";
+import {
+  buildBorrowIx,
+  buildDepositCollateralIx,
+  buildRepayIx,
+  buildWithdrawCollateralIx,
+} from "@/lib/chain/ix";
+import { humanizeError } from "@/lib/chain/errors";
 import {
   AmountInput,
   AnimatedNumber,
@@ -32,7 +44,7 @@ import type { AssetSymbol } from "@/types";
 
 type TopTab = "stake" | "borrow";
 type StakeMode = "stake" | "unstake";
-type BorrowMode = "borrow" | "repay";
+type BorrowMode = "deposit" | "borrow" | "repay" | "withdraw";
 
 interface ManageCardProps {
   initialTab?: TopTab;
@@ -66,41 +78,35 @@ export function ManageCard({ initialTab = "stake" }: ManageCardProps) {
 /* ----------------------------- Stake ---------------------------------- */
 
 function StakePanel() {
-  const position = useMockStore((s) => s.position);
-  const stake = useMockStore((s) => s.stake);
-  const unstake = useMockStore((s) => s.unstake);
+  // Staking program is deployed but not yet initialized on this cluster
+  // (the bootstrap only set up the lending market). Until a staking
+  // `initialize` is wired, this panel is a read-only preview — the
+  // submit button stays disabled and the user gets a clear message.
+  const { connected } = useWallet();
+  const { data: live } = useUserPosition();
+  const mockPosition = useMockStore((s) => s.position);
+  const position = connected && live ? live.position : mockPosition;
 
   const [mode, setMode] = useState<StakeMode>("stake");
   const [amount, setAmount] = useState("");
 
-  const exchangeRate = 1.0034; // placeholder until real accrual data is wired.
+  const exchangeRate = 1.0; // 1:1 until real accrual data is wired
   const parsed = parseFloat(amount) || 0;
 
   const fromSym: AssetSymbol = mode === "stake" ? "SOL" : "nSOL";
   const toSym: AssetSymbol = mode === "stake" ? "nSOL" : "SOL";
 
-  const receive =
-    mode === "stake" ? parsed / exchangeRate : parsed * 0.9966;
+  const receive = mode === "stake" ? parsed / exchangeRate : parsed * exchangeRate;
 
   const maxAvailable =
     mode === "stake" ? position.walletSol : position.collateral;
 
-  const error =
-    parsed > 0 && parsed > maxAvailable ? "Insufficient balance" : null;
-
-  const disabled = parsed <= 0 || !!error;
-
-  const onSubmit = () => {
-    if (disabled) return;
-    if (mode === "stake") stake(parsed);
-    else unstake(parsed);
-    setAmount("");
-  };
-
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <span className="eyebrow">{mode === "stake" ? "You stake" : "You unstake"}</span>
+        <span className="eyebrow">
+          {mode === "stake" ? "You stake" : "You unstake"}
+        </span>
         <SegmentedControl<StakeMode>
           size="sm"
           value={mode}
@@ -121,7 +127,6 @@ function StakePanel() {
         tokenBadge={<TokenBadge symbol={fromSym} />}
         balanceLabel={`${formatToken(maxAvailable, 4)} ${fromSym}`}
         onMax={() => setAmount(String(maxAvailable))}
-        error={error ?? undefined}
       />
 
       <Arrow />
@@ -145,21 +150,25 @@ function StakePanel() {
             value: `1 SOL = ${formatToken(1 / exchangeRate, 4)} nSOL`,
           },
           {
-            label: mode === "stake" ? "Stake APY" : "Est. unstake fee",
-            value: mode === "stake" ? "8.14%" : "—",
-            accent: mode === "stake",
+            label: "Stake APY",
+            value: "—",
           },
         ]}
       />
 
       <Button
         variant="primary"
-        onClick={onSubmit}
-        disabled={disabled}
+        onClick={() => {}}
+        disabled
         className="w-full h-12 mt-5 text-base"
       >
-        {mode === "stake" ? "Stake SOL" : "Unstake nSOL"}
+        Staking not initialized
       </Button>
+
+      <p className="text-xs text-fg-subtle mt-3 text-center">
+        Staking program is deployed but the on-chain `initialize` hasn't
+        been run yet. Borrow side is fully live.
+      </p>
     </div>
   );
 }
@@ -167,15 +176,34 @@ function StakePanel() {
 /* ----------------------------- Borrow --------------------------------- */
 
 function BorrowPanel() {
-  const position = useMockStore((s) => s.position);
-  const prices = useMockStore((s) => s.prices);
-  const borrow = useMockStore((s) => s.borrow);
-  const repay = useMockStore((s) => s.repay);
+  const { publicKey: signerPubkey } = useActiveSigner();
+  const connected = !!signerPubkey;
+  const publicKey = signerPubkey;
+  const { data: live } = useUserPosition();
+  const { data: protocol } = useProtocolStats();
+  const mockPosition = useMockStore((s) => s.position);
+  const mockPrices = useMockStore((s) => s.prices);
 
-  const [mode, setMode] = useState<BorrowMode>("borrow");
+  const position = connected && live ? live.position : mockPosition;
+  const prices = connected && live ? live.prices : mockPrices;
+  const borrowAprPct = protocol ? protocol.borrowApr * 100 : 5.0;
+  const liqThresholdPct = protocol ? protocol.liquidationThreshold : 0.8;
+
+  const sendTx = useSendTx();
+  const [mode, setMode] = useState<BorrowMode>("deposit");
   const [amount, setAmount] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [txStatus, setTxStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "pending" }
+    | { kind: "success"; sig: string }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
 
   const parsed = parseFloat(amount) || 0;
+
+  const isCollateralSide = mode === "deposit" || mode === "withdraw";
+  const tokenSym: AssetSymbol = isCollateralSide ? "nSOL" : "USDC";
 
   const health = useMemo(
     () => evaluateHealth(position, prices),
@@ -183,41 +211,116 @@ function BorrowPanel() {
   );
 
   const previewHealth = useMemo(() => {
-    const delta = mode === "borrow" ? parsed : -parsed;
-    return evaluateHealth(
-      { ...position, debt: Math.max(0, position.debt + delta) },
-      prices,
-    );
+    const next = { ...position };
+    if (mode === "deposit") next.collateral = position.collateral + parsed;
+    else if (mode === "withdraw")
+      next.collateral = Math.max(0, position.collateral - parsed);
+    else if (mode === "borrow") next.debt = position.debt + parsed;
+    else next.debt = Math.max(0, position.debt - parsed);
+    return evaluateHealth(next, prices);
   }, [mode, parsed, position, prices]);
 
-  const maxAvailable =
-    mode === "borrow"
-      ? Math.max(0, health.borrowLimitUsd - position.debt)
-      : position.debt;
+  // Wallet balances for preflight checks (deposit needs nSOL, repay needs USDC).
+  const walletNsol = live
+    ? Number(live.walletBalances.nsolLamports) / 1e9
+    : 0;
+  const walletUsdc = live
+    ? Number(live.walletBalances.usdcLamports) / 10 ** USDC_DECIMALS
+    : 0;
+
+  const maxAvailable = (() => {
+    switch (mode) {
+      case "deposit":
+        return walletNsol;
+      case "withdraw":
+        return position.collateral;
+      case "borrow":
+        return Math.max(0, health.borrowLimitUsd - position.debt);
+      case "repay":
+        return Math.min(position.debt, walletUsdc);
+    }
+  })();
 
   const wouldLiquidate =
-    mode === "borrow" && parsed > 0 && previewHealth.healthFactor < 1;
+    (mode === "borrow" || mode === "withdraw") &&
+    parsed > 0 &&
+    previewHealth.healthFactor < 1;
 
   const error = wouldLiquidate
     ? "Would liquidate your position"
-    : parsed > maxAvailable
+    : Number.isFinite(maxAvailable) && parsed > maxAvailable
     ? "Exceeds available"
     : null;
 
-  const disabled = parsed <= 0 || !!error;
+  const disabled = !connected || parsed <= 0 || !!error || sendTx.isPending;
 
-  const onSubmit = () => {
-    if (disabled) return;
-    if (mode === "borrow") borrow(parsed);
-    else repay(parsed);
-    setAmount("");
+  const onSubmit = async () => {
+    if (!publicKey || disabled) return;
+    setConfirmOpen(false);
+    setTxStatus({ kind: "pending" });
+    try {
+      let instructions;
+      let ensureAtasFor;
+      if (mode === "deposit") {
+        const lamports = BigInt(Math.round(parsed * 1e9));
+        instructions = [buildDepositCollateralIx(publicKey, lamports)];
+        ensureAtasFor = [CONFIG.collateralMint];
+      } else if (mode === "withdraw") {
+        const lamports = BigInt(Math.round(parsed * 1e9));
+        instructions = [buildWithdrawCollateralIx(publicKey, lamports)];
+        ensureAtasFor = [CONFIG.collateralMint];
+      } else if (mode === "borrow") {
+        const lamports = BigInt(Math.round(parsed * 10 ** USDC_DECIMALS));
+        instructions = [buildBorrowIx(publicKey, lamports)];
+        ensureAtasFor = [CONFIG.debtMint];
+      } else {
+        const lamports = BigInt(Math.round(parsed * 10 ** USDC_DECIMALS));
+        instructions = [buildRepayIx(publicKey, lamports)];
+        ensureAtasFor = [CONFIG.debtMint];
+      }
+      const sig = await sendTx.mutateAsync({ instructions, ensureAtasFor });
+      setTxStatus({ kind: "success", sig });
+      setAmount("");
+    } catch (e) {
+      setTxStatus({ kind: "error", message: humanizeError(e) });
+    }
   };
+
+  const buttonLabel = {
+    deposit: "Deposit nSOL",
+    withdraw: "Withdraw nSOL",
+    borrow: "Borrow USDC",
+    repay: "Repay USDC",
+  }[mode];
+
+  const pendingLabel = {
+    deposit: "Depositing…",
+    withdraw: "Withdrawing…",
+    borrow: "Borrowing…",
+    repay: "Repaying…",
+  }[mode];
+
+  const balanceLabel = (() => {
+    switch (mode) {
+      case "deposit":
+        return `Wallet ${formatToken(walletNsol, 4)} nSOL`;
+      case "withdraw":
+        return `Supplied ${formatToken(position.collateral, 4)} nSOL`;
+      case "borrow":
+        return `Available $${formatUsd(maxAvailable)}`;
+      case "repay":
+        return `Debt $${formatUsd(position.debt)} · Wallet $${formatUsd(walletUsdc)}`;
+    }
+  })();
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <span className="eyebrow">
-          {mode === "borrow" ? "You borrow" : "You repay"}
+          {mode === "deposit" && "You deposit"}
+          {mode === "withdraw" && "You withdraw"}
+          {mode === "borrow" && "You borrow"}
+          {mode === "repay" && "You repay"}
         </span>
         <SegmentedControl<BorrowMode>
           size="sm"
@@ -225,10 +328,13 @@ function BorrowPanel() {
           onChange={(next) => {
             setMode(next);
             setAmount("");
+            setTxStatus({ kind: "idle" });
           }}
           options={[
+            { value: "deposit", label: "Deposit" },
             { value: "borrow", label: "Borrow" },
             { value: "repay", label: "Repay" },
+            { value: "withdraw", label: "Withdraw" },
           ]}
         />
       </div>
@@ -236,13 +342,13 @@ function BorrowPanel() {
       <AmountInput
         value={amount}
         onChange={setAmount}
-        tokenBadge={<TokenBadge symbol="USDC" />}
-        balanceLabel={
-          mode === "borrow"
-            ? `Available $${formatUsd(maxAvailable)}`
-            : `Debt $${formatUsd(maxAvailable)}`
+        tokenBadge={<TokenBadge symbol={tokenSym} />}
+        balanceLabel={balanceLabel}
+        onMax={
+          Number.isFinite(maxAvailable)
+            ? () => setAmount(String(maxAvailable))
+            : undefined
         }
-        onMax={() => setAmount(String(maxAvailable))}
         error={error ?? undefined}
       />
 
@@ -286,23 +392,147 @@ function BorrowPanel() {
           },
           {
             label: "Borrow APR",
-            value: <span className="num text-alert/80">6.72%</span>,
+            value: (
+              <span className="num text-alert/80">
+                {borrowAprPct.toFixed(2)}%
+              </span>
+            ),
           },
         ]}
       />
 
       <Button
         variant="primary"
-        onClick={onSubmit}
+        onClick={() => setConfirmOpen(true)}
         disabled={disabled}
         className="w-full h-12 mt-5 text-base"
       >
-        {mode === "borrow" ? "Borrow USDC" : "Repay USDC"}
+        {sendTx.isPending ? pendingLabel : buttonLabel}
       </Button>
 
+      {txStatus.kind === "success" && (
+        <p className="text-xs text-accent mt-3 text-center num">
+          ✓ confirmed · {txStatus.sig.slice(0, 8)}…
+        </p>
+      )}
+      {txStatus.kind === "error" && (
+        <div className="mt-3 rounded border border-alert/40 bg-alert/10 px-3 py-2 text-xs text-alert text-center">
+          {txStatus.message}
+        </div>
+      )}
+      {!connected && (
+        <p className="text-xs text-fg-subtle mt-3 text-center">
+          Connect a wallet to transact.
+        </p>
+      )}
+
       <p className="text-xs text-fg-subtle mt-3 text-center">
-        Liquidation threshold is {formatPct(0.8, 0)} of collateral value.
+        Liquidation threshold is {formatPct(liqThresholdPct, 0)} of collateral value.
       </p>
+
+      {confirmOpen && (
+        <ConfirmModal
+          mode={mode}
+          amount={parsed}
+          tokenSym={tokenSym}
+          fromHealth={health.healthFactor}
+          toHealth={previewHealth.healthFactor}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={onSubmit}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmModal({
+  mode,
+  amount,
+  tokenSym,
+  fromHealth,
+  toHealth,
+  onCancel,
+  onConfirm,
+}: {
+  mode: BorrowMode;
+  amount: number;
+  tokenSym: AssetSymbol;
+  fromHealth: number;
+  toHealth: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const verb = {
+    deposit: "deposit",
+    withdraw: "withdraw",
+    borrow: "borrow",
+    repay: "repay",
+  }[mode];
+  const hfBetter = toHealth >= fromHealth;
+  const toAtRisk = toHealth < 1.3 && Number.isFinite(toHealth);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/70 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm rounded-lg border border-border bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-5 border-b border-border">
+          <div className="eyebrow mb-1">Confirm</div>
+          <div className="text-lg font-medium">
+            You will {verb}{" "}
+            <span className="num">
+              {formatToken(amount, 4)} {tokenSym}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-fg-muted">Health factor</span>
+            <span className="num">
+              {Number.isFinite(fromHealth) ? `${fromHealth.toFixed(2)}×` : "∞"}
+              <span className="text-fg-muted mx-2">→</span>
+              <span
+                className={
+                  toAtRisk
+                    ? "text-alert"
+                    : hfBetter
+                    ? "text-accent"
+                    : "text-fg"
+                }
+              >
+                {Number.isFinite(toHealth) ? `${toHealth.toFixed(2)}×` : "∞"}
+              </span>
+            </span>
+          </div>
+          {toAtRisk && (
+            <div className="rounded border border-alert/40 bg-alert/10 px-3 py-2 text-xs text-alert">
+              Warning: resulting health factor is close to liquidation.
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t border-border flex gap-3">
+          <Button
+            variant="secondary"
+            onClick={onCancel}
+            className="flex-1 h-10 text-sm"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={onConfirm}
+            className="flex-1 h-10 text-sm"
+          >
+            Confirm
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

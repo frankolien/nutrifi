@@ -12,7 +12,7 @@ import { cx } from "@/lib/cx";
  * balance summary, etc. Always the same proportions.
  */
 interface StatCellProps {
-  label: string;
+  label: ReactNode;
   value: ReactNode;
   sub?: ReactNode;
   accent?: "neutral" | "accent" | "alert";

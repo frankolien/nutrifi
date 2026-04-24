@@ -1,16 +1,23 @@
+import { useMemo } from "react";
 import { NavLink } from "react-router-dom";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { cx } from "@/lib/cx";
-import { useMockStore } from "@/mock/data";
-import { shortAddress } from "@/lib/format";
-import { Button } from "@/components/primitives";
+import { useUserPosition } from "@/hooks/useUserPosition";
+import { useActiveSigner } from "@/hooks/useSendTx";
+import { loadDevKeypair } from "@/lib/chain/devSigner";
+import { formatToken, shortAddress } from "@/lib/format";
+import {
+  NSOL_DECIMALS,
+  USDC_DECIMALS,
+} from "@/lib/config";
 
 /**
- * TopNav — wordmark, route nav, connect button.
+ * TopNav — wordmark, route nav, balance widget, connect button.
  *
- * Jupiter-style: tall (64px), hairline bottom border, active route
- * marked by both a filled pill *and* accent text. The filled pill is
- * enough on its own; we include the text emphasis so keyboard-nav
- * focus is obvious without relying on outline alone.
+ * When connected, a compact balance strip shows the three assets the
+ * protocol cares about (SOL / nSOL / USDC) in JetBrains Mono so digits
+ * stay tabular. Ellipsis fallback for small screens isn't implemented —
+ * the page isn't meant for mobile.
  */
 
 const NAV_ITEMS: { label: string; path: string }[] = [
@@ -23,10 +30,10 @@ const NAV_ITEMS: { label: string; path: string }[] = [
 ];
 
 export function TopNav() {
-  const connected = useMockStore((s) => s.connected);
-  const walletAddress = useMockStore((s) => s.walletAddress);
-  const connect = useMockStore((s) => s.connect);
-  const disconnect = useMockStore((s) => s.disconnect);
+  const { publicKey, isDev } = useActiveSigner();
+  const connected = !!publicKey;
+  const devKey = useMemo(() => loadDevKeypair(), []);
+  const { data: live } = useUserPosition();
 
   return (
     <header className="sticky top-0 z-40 bg-bg/80 backdrop-blur-md border-b border-border">
@@ -58,24 +65,65 @@ export function TopNav() {
           ))}
         </nav>
 
-        {connected ? (
-          <button
-            onClick={disconnect}
-            className="num inline-flex items-center gap-2 text-xs text-fg-muted hover:text-fg border border-border hover:border-border-strong rounded h-9 px-3 transition-colors"
-            title="Click to disconnect"
-          >
-            <span className="relative flex w-1.5 h-1.5">
-              <span className="absolute inset-0 rounded-full bg-accent opacity-75 animate-ping" />
-              <span className="relative rounded-full w-1.5 h-1.5 bg-accent" />
-            </span>
-            {shortAddress(walletAddress)}
-          </button>
-        ) : (
-          <Button variant="primary" onClick={connect} className="h-9 px-5 text-sm">
-            Connect wallet
-          </Button>
+        {connected && live && (
+          <div className="hidden md:flex items-center gap-4 pr-4 border-r border-border h-9">
+            <BalanceCell
+              label="SOL"
+              value={live.position.walletSol}
+              decimals={3}
+            />
+            <BalanceCell
+              label="nSOL"
+              value={Number(live.walletBalances.nsolLamports) / 10 ** NSOL_DECIMALS}
+              decimals={3}
+            />
+            <BalanceCell
+              label="USDC"
+              value={Number(live.walletBalances.usdcLamports) / 10 ** USDC_DECIMALS}
+              decimals={2}
+            />
+          </div>
         )}
+
+        <div className="nutrifi-wallet-btn flex items-center">
+          {isDev && devKey ? (
+            <div
+              className="num inline-flex items-center gap-2 text-xs text-fg-muted border border-border bg-fg/[0.04] rounded h-9 px-3"
+              title="Dev signer active — VITE_DEV_SIGNER_SECRET is set. Remove from .env.local to use a browser wallet."
+            >
+              <span className="text-[9px] uppercase tracking-[0.12em] text-alert/70">
+                dev signer
+              </span>
+              <span className="text-fg">
+                {shortAddress(devKey.publicKey.toBase58())}
+              </span>
+            </div>
+          ) : (
+            <WalletMultiButton />
+          )}
+        </div>
       </div>
     </header>
+  );
+}
+
+function BalanceCell({
+  label,
+  value,
+  decimals,
+}: {
+  label: string;
+  value: number;
+  decimals: number;
+}) {
+  return (
+    <div className="flex flex-col items-end leading-tight">
+      <span className="text-[10px] uppercase tracking-[0.08em] text-fg-subtle">
+        {label}
+      </span>
+      <span className="num text-xs tabular-nums text-fg">
+        {formatToken(value, decimals)}
+      </span>
+    </div>
   );
 }

@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { Outlet } from "react-router-dom";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { loadDevKeypair } from "@/lib/chain/devSigner";
 import { TopNav } from "./TopNav";
-import { useMockStore } from "@/mock/data";
 import { ConnectPrompt } from "./ConnectPrompt";
 
 /**
@@ -17,7 +19,9 @@ import { ConnectPrompt } from "./ConnectPrompt";
  * All fixed so scrolling doesn't reveal edges.
  */
 export function Layout() {
-  const connected = useMockStore((s) => s.connected);
+  const { connected } = useWallet();
+  const devKey = useMemo(() => loadDevKeypair(), []);
+  const effectivelyConnected = connected || !!devKey;
 
   return (
     <div className="relative min-h-screen flex flex-col">
@@ -25,7 +29,7 @@ export function Layout() {
       <div className="relative z-10 flex flex-col flex-1">
         <TopNav />
         <main className="flex-1 w-full max-w-page mx-auto px-6 py-10">
-          {connected ? <Outlet /> : <ConnectPrompt />}
+          {effectivelyConnected ? <Outlet /> : <ConnectPrompt />}
         </main>
         <Footer />
       </div>

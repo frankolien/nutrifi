@@ -7,3 +7,4 @@ export { Divider } from "./Divider";
 export { AnimatedNumber } from "./AnimatedNumber";
 export { SegmentedControl } from "./SegmentedControl";
 export { TokenMark } from "./TokenMark";
+export { Tooltip } from "./Tooltip";

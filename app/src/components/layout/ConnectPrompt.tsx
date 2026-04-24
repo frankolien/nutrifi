@@ -1,5 +1,5 @@
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Button } from "@/components/primitives";
-import { useMockStore } from "@/mock/data";
 
 /**
  * ConnectPrompt — the disconnected landing page.
@@ -17,7 +17,8 @@ import { useMockStore } from "@/mock/data";
  * show marketing copy to someone who's here to move money.
  */
 export function ConnectPrompt() {
-  const connect = useMockStore((s) => s.connect);
+  const { setVisible } = useWalletModal();
+  const connect = () => setVisible(true);
 
   return (
     <div className="pt-12 pb-24">

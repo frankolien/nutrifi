@@ -1,28 +1,61 @@
-import { useMockStore } from "@/mock/data";
-import {
-  formatCompactUsd,
-  formatPct,
-  formatUsd,
-} from "@/lib/format";
+import { useProtocolStats } from "@/hooks/useProtocolStats";
+import { formatCompactUsd, formatPct, formatUsd } from "@/lib/format";
 import { PageHeader } from "@/components/layout";
 import { AnimatedNumber, Card, TokenMark } from "@/components/primitives";
+import type { AssetSymbol } from "@/types";
 
 /**
  * Markets — protocol-wide asset table.
  *
- * Row hover state and the utilization bar gradient lift this out of
- * the "Wikipedia table" feel. Numbers animate on change so live price
- * updates don't look like text swaps.
+ * Rows are derived from the live `Market` account:
+ *   - nSOL (collateral side): price, TVL = total collateral × price,
+ *     utilization = global utilization.
+ *   - USDC (debt side): debt outstanding, borrow APR.
+ *
+ * Supply APY for nSOL is not tracked on-chain (no interest flows to
+ * suppliers — the spread goes to the treasury conceptually), so we
+ * show `—`. Once a real index is wired, swap in the value.
  */
+
+interface MarketRow {
+  asset: AssetSymbol;
+  price: number;
+  supplyApy: number | null;
+  borrowApr: number | null;
+  utilization: number;
+  tvl: number;
+}
+
 export default function Markets() {
-  const markets = useMockStore((s) => s.markets);
+  const { data: protocol, isLoading, error } = useProtocolStats();
+
+  const rows: MarketRow[] = protocol
+    ? [
+        {
+          asset: "nSOL",
+          price: protocol.usdPerNsol,
+          supplyApy: null,
+          borrowApr: null,
+          utilization: protocol.utilization,
+          tvl: protocol.tvlUsd,
+        },
+        {
+          asset: "USDC",
+          price: 1.0,
+          supplyApy: null,
+          borrowApr: protocol.borrowApr,
+          utilization: protocol.utilization,
+          tvl: protocol.totalBorrowedUsdc,
+        },
+      ]
+    : [];
 
   return (
     <div>
       <PageHeader
         eyebrow="Markets"
         title="Assets"
-        description="Every asset supported by the protocol, with current rates and utilization."
+        description="Live protocol data — collateral on top, debt below."
       />
 
       <Card>
@@ -39,12 +72,12 @@ export default function Markets() {
               </tr>
             </thead>
             <tbody>
-              {markets.map((m, i) => (
+              {rows.map((m, i) => (
                 <tr
                   key={m.asset}
                   className={
-                    (i < markets.length - 1 ? "border-b border-border " : "") +
-                    "group hover:bg-fg/[0.02] transition-colors cursor-pointer"
+                    (i < rows.length - 1 ? "border-b border-border " : "") +
+                    "group hover:bg-fg/[0.02] transition-colors"
                   }
                 >
                   <td className="px-6 py-5">
@@ -97,6 +130,17 @@ export default function Markets() {
                   </td>
                 </tr>
               ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-fg-muted">
+                    {error
+                      ? `Error reading market: ${String(error)}`
+                      : isLoading
+                      ? "Loading market data…"
+                      : "No market data."}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

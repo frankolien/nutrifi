@@ -1,5 +1,8 @@
 import { useMemo } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useMockStore } from "@/mock/data";
+import { useUserPosition } from "@/hooks/useUserPosition";
+import { useProtocolStats } from "@/hooks/useProtocolStats";
 import { evaluateHealth, healthState } from "@/lib/health";
 import {
   formatCompactUsd,
@@ -12,28 +15,46 @@ import {
   Card,
   HealthBar,
   StatCell,
+  Tooltip,
 } from "@/components/primitives";
 import { ManageCard } from "@/components/ManageCard";
+import { Sidebar } from "@/components/Sidebar";
 
 /**
- * Dashboard — the action hub.
+ * Dashboard — two-column layout on wide viewports.
  *
- * Layout philosophy is straight out of Jupiter: the big centered card
- * *is* the page. Everything else orbits it. The position +
- * health-bar strip lives directly above the card so users see their
- * current state the moment they land, and the protocol stats sit far
- * below so they don't compete for the eye.
+ *   ┌──────────── max-w-5xl ────────────┐
+ *   │                                   │
+ *   │  [position + action] │ [sidebar]  │
+ *   │  [context cards]     │            │
+ *   │                                   │
+ *   │  [protocol stats footer]          │
+ *   └───────────────────────────────────┘
  *
- *   [ small position strip — net, delta, HF bar           ]
- *   [            <<<<  ManageCard  >>>>                   ]
- *   [            context cards (earned, APY)              ]
- *   [ ─────── divider ────────                            ]
- *   [            protocol stats                           ]
+ * On narrow viewports the sidebar stacks below the action column.
  */
 export default function Dashboard() {
-  const position = useMockStore((s) => s.position);
-  const prices = useMockStore((s) => s.prices);
-  const stats = useMockStore((s) => s.marketStats);
+  const { connected } = useWallet();
+  const { data: live, isLoading: liveLoading } = useUserPosition();
+  const { data: protocol } = useProtocolStats();
+
+  const mockPosition = useMockStore((s) => s.position);
+  const mockPrices = useMockStore((s) => s.prices);
+  const mockStats = useMockStore((s) => s.marketStats);
+
+  const stats = protocol
+    ? {
+        tvl: protocol.tvlUsd,
+        totalBorrowed: protocol.totalBorrowedUsdc,
+        utilization: protocol.utilization,
+        volume24h: mockStats.volume24h,
+        liquidations24h: mockStats.liquidations24h,
+      }
+    : mockStats;
+
+  const position = connected && live ? live.position : mockPosition;
+  const prices = connected && live ? live.prices : mockPrices;
+  const isLive = connected && !!live;
 
   const health = useMemo(
     () => evaluateHealth(position, prices),
@@ -44,121 +65,124 @@ export default function Dashboard() {
   const netUsd = health.collateralValueUsd - position.debt;
 
   return (
-    <div>
-      {/* Position strip — quiet, one line, sits above the fold's action */}
-      <div className="max-w-action mx-auto mb-6">
-        <div className="flex items-baseline justify-between">
-          <div>
-            <div className="eyebrow mb-1.5">Net position</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-fg-subtle text-lg">$</span>
-              <AnimatedNumber
-                value={netUsd}
-                format={(v) => formatUsd(v)}
-                className="num text-4xl font-semibold tracking-tight"
-              />
+    <div className="max-w-5xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-8">
+        {/* Main column */}
+        <div className="min-w-0">
+          {/* Position strip */}
+          <div className="mb-6">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <div className="eyebrow mb-1.5 flex items-center gap-2">
+                  Net position
+                  {isLive && (
+                    <span className="text-[9px] uppercase tracking-[0.12em] text-accent">
+                      live
+                    </span>
+                  )}
+                  {connected && liveLoading && (
+                    <span className="text-[9px] uppercase tracking-[0.12em] text-fg-muted">
+                      loading
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-fg-subtle text-lg">$</span>
+                  <AnimatedNumber
+                    value={netUsd}
+                    format={(v) => formatUsd(v)}
+                    className="num text-4xl font-semibold tracking-tight"
+                  />
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="eyebrow mb-1.5 flex items-center justify-end">
+                  <Tooltip text="Health factor = (collateral value × 80%) / debt. Below 1× anyone can liquidate you at a 5% discount. Stay above 1.3× for breathing room.">
+                    Health
+                  </Tooltip>
+                </div>
+                <div className="flex items-baseline gap-2 justify-end">
+                  <AnimatedNumber
+                    value={
+                      Number.isFinite(health.healthFactor)
+                        ? health.healthFactor
+                        : 99
+                    }
+                    format={(v) => (v >= 99 ? "∞" : `${v.toFixed(2)}×`)}
+                    className={`num text-2xl font-medium ${
+                      state === "healthy" || state === "caution"
+                        ? "text-fg"
+                        : "text-alert"
+                    }`}
+                  />
+                  <span
+                    className={`text-2xs uppercase tracking-[0.12em] ${
+                      state === "healthy"
+                        ? "text-accent"
+                        : state === "caution"
+                        ? "text-fg-muted"
+                        : "text-alert"
+                    }`}
+                  >
+                    {state === "healthy"
+                      ? "Healthy"
+                      : state === "caution"
+                      ? "Caution"
+                      : state === "risk"
+                      ? "At risk"
+                      : "Liquidatable"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4">
+              <HealthBar health={health} showTicks={false} />
             </div>
           </div>
-          <div className="text-right">
-            <div className="eyebrow mb-1.5">Health</div>
-            <div className="flex items-baseline gap-2 justify-end">
-              <AnimatedNumber
+
+          <ManageCard />
+
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <Card className="hover:border-border-strong transition-colors">
+              <StatCell
+                label="Supplied"
                 value={
-                  Number.isFinite(health.healthFactor)
-                    ? health.healthFactor
-                    : 99
+                  <AnimatedNumber
+                    value={position.collateral}
+                    format={(v) => formatToken(v, 3)}
+                  />
                 }
-                format={(v) => (v >= 99 ? "∞" : `${v.toFixed(2)}×`)}
-                className={`num text-2xl font-medium ${
-                  state === "healthy" || state === "caution"
-                    ? "text-fg"
-                    : "text-alert"
-                }`}
+                sub={`nSOL · $${formatUsd(health.collateralValueUsd)}`}
+                padding="sm"
               />
-              <span
-                className={`text-2xs uppercase tracking-[0.12em] ${
-                  state === "healthy"
-                    ? "text-accent"
-                    : state === "caution"
-                    ? "text-fg-muted"
-                    : "text-alert"
-                }`}
-              >
-                {state === "healthy"
-                  ? "Healthy"
-                  : state === "caution"
-                  ? "Caution"
-                  : state === "risk"
-                  ? "At risk"
-                  : "Liquidatable"}
-              </span>
-            </div>
+            </Card>
+            <Card className="hover:border-border-strong transition-colors">
+              <StatCell
+                label="Borrowed"
+                value={
+                  <AnimatedNumber
+                    value={position.debt}
+                    format={(v) => `$${formatUsd(v)}`}
+                  />
+                }
+                sub={`USDC · ${formatPct(health.utilization, 1)} of limit`}
+                padding="sm"
+              />
+            </Card>
           </div>
         </div>
-        <div className="mt-4">
-          <HealthBar health={health} showTicks={false} />
+
+        {/* Right sidebar — stacks below on narrow viewports */}
+        <div>
+          <Sidebar />
         </div>
       </div>
 
-      {/* The action hub */}
-      <ManageCard />
-
-      {/* Context cards — personal numbers, post-action */}
-      <div className="max-w-action mx-auto mt-6 grid grid-cols-2 gap-3">
-        <Card className="hover:border-border-strong transition-colors">
-          <StatCell
-            label="Supplied"
-            value={
-              <AnimatedNumber
-                value={position.collateral}
-                format={(v) => formatToken(v, 3)}
-              />
-            }
-            sub={`nSOL · $${formatUsd(health.collateralValueUsd)}`}
-            padding="sm"
-          />
-        </Card>
-        <Card className="hover:border-border-strong transition-colors">
-          <StatCell
-            label="Borrowed"
-            value={
-              <AnimatedNumber
-                value={position.debt}
-                format={(v) => `$${formatUsd(v)}`}
-              />
-            }
-            sub={`USDC · ${formatPct(health.utilization, 1)} of limit`}
-            padding="sm"
-          />
-        </Card>
-        <Card className="hover:border-border-strong transition-colors">
-          <StatCell
-            label="Net APY"
-            value={<span className="text-accent">+5.42%</span>}
-            sub="+8.14% − 2.72%"
-            padding="sm"
-          />
-        </Card>
-        <Card className="hover:border-border-strong transition-colors">
-          <StatCell
-            label="NUT earned"
-            value={
-              <AnimatedNumber
-                value={position.rewards}
-                format={(v) => formatToken(v, 3)}
-              />
-            }
-            sub={`≈ $${formatUsd(position.rewards * prices.nut, 3)}`}
-            padding="sm"
-          />
-        </Card>
-      </div>
-
-      {/* Protocol stats — far enough down that they don't steal focus */}
-      <div className="mt-20">
-        <div className="eyebrow mb-4 text-center">Protocol</div>
+      {/* Protocol stats footer (full width, compact) */}
+      <div className="mt-16">
+        <div className="eyebrow mb-3">Protocol</div>
         <Card>
-          <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-y md:divide-y-0 divide-border">
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-border">
             <StatCell
               label="TVL"
               value={formatCompactUsd(stats.tvl)}
@@ -175,13 +199,8 @@ export default function Dashboard() {
               padding="sm"
             />
             <StatCell
-              label="24h volume"
-              value={formatCompactUsd(stats.volume24h)}
-              padding="sm"
-            />
-            <StatCell
-              label="Liquidations 24h"
-              value={formatCompactUsd(stats.liquidations24h)}
+              label="Borrow APR"
+              value={protocol ? formatPct(protocol.borrowApr, 2) : "—"}
               padding="sm"
             />
           </div>

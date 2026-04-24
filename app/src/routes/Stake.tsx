@@ -1,5 +1,8 @@
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useUserPosition } from "@/hooks/useUserPosition";
 import { useMockStore } from "@/mock/data";
 import { formatToken, formatUsd } from "@/lib/format";
+import { NSOL_DECIMALS, USDC_DECIMALS } from "@/lib/config";
 import { PageHeader } from "@/components/layout";
 import {
   AnimatedNumber,
@@ -12,17 +15,30 @@ import {
 import { ManageCard } from "@/components/ManageCard";
 
 /**
- * Stake — detail view. Action lives in the shared ManageCard (stake
- * tab pinned on mount), page adds the "advanced" stuff users who
- * navigate here specifically want: balance table, reward claim,
- * historical trend (stubbed until on-chain data lands).
+ * Stake — detail view.
+ *
+ * The in-card Stake action is disabled until the staking program is
+ * initialized on-chain (see ManageCard StakePanel). Until then this
+ * page is a read-only preview: the user's wallet balances are live,
+ * everything else stays informational.
  */
 export default function Stake() {
-  const position = useMockStore((s) => s.position);
-  const prices = useMockStore((s) => s.prices);
-  const claim = useMockStore((s) => s.claimRewards);
+  const { connected } = useWallet();
+  const { data: live } = useUserPosition();
+  const mockPosition = useMockStore((s) => s.position);
+  const mockPrices = useMockStore((s) => s.prices);
 
-  const rewardsUsd = position.rewards * prices.nut;
+  const position = connected && live ? live.position : mockPosition;
+  const prices = connected && live ? live.prices : mockPrices;
+
+  // Wallet balances: live when connected, zeros when not.
+  const walletSol = position.walletSol;
+  const walletNsol = live
+    ? Number(live.walletBalances.nsolLamports) / 10 ** NSOL_DECIMALS
+    : 0;
+  const walletUsdc = live
+    ? Number(live.walletBalances.usdcLamports) / 10 ** USDC_DECIMALS
+    : 0;
 
   return (
     <div>
@@ -34,7 +50,6 @@ export default function Stake() {
 
       <ManageCard initialTab="stake" />
 
-      {/* Claim + balances row */}
       <div className="max-w-action mx-auto mt-10 grid gap-4">
         <Card>
           <div className="p-5 flex items-center justify-between">
@@ -42,20 +57,20 @@ export default function Stake() {
               <div className="eyebrow mb-2">Claimable rewards</div>
               <div className="flex items-baseline gap-2">
                 <AnimatedNumber
-                  value={position.rewards}
+                  value={0}
                   format={(v) => formatToken(v, 4)}
                   className="num text-2xl font-medium"
                 />
                 <TokenBadge symbol="NUT" />
               </div>
               <div className="num text-xs text-fg-muted mt-1">
-                ≈ ${formatUsd(rewardsUsd, 4)}
+                Available once staking is initialized.
               </div>
             </div>
             <Button
               variant="primary"
-              onClick={claim}
-              disabled={position.rewards < 0.001}
+              onClick={() => {}}
+              disabled
               className="h-10 px-5"
             >
               Claim
@@ -65,21 +80,13 @@ export default function Stake() {
 
         <Card>
           <div className="divide-y divide-border">
-            <BalanceRow
-              symbol="SOL"
-              amount={position.walletSol}
-              usd={position.walletSol * prices.sol}
-            />
+            <BalanceRow symbol="SOL" amount={walletSol} usd={walletSol * prices.sol} />
             <BalanceRow
               symbol="nSOL"
-              amount={position.collateral}
-              usd={position.collateral * prices.nsol}
+              amount={walletNsol}
+              usd={walletNsol * prices.nsol}
             />
-            <BalanceRow
-              symbol="NUT"
-              amount={position.rewards}
-              usd={rewardsUsd}
-            />
+            <BalanceRow symbol="USDC" amount={walletUsdc} usd={walletUsdc} />
           </div>
         </Card>
       </div>
