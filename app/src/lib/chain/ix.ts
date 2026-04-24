@@ -245,3 +245,88 @@ export function buildRepayIx(
     data: Buffer.from(data),
   });
 }
+
+/* ===================== STAKING PROGRAM ================================= */
+
+/* ---------------------- stake ------------------------------------------ */
+
+export function buildStakeIx(
+  user: PublicKey,
+  solLamports: bigint,
+): TransactionInstruction {
+  const { stakingConfig, solVault, nsolMintAuth } = requireStaking();
+  const userNsolAta = getAssociatedTokenAddressSync(CONFIG.collateralMint, user);
+  const data = concat([ixDiscriminator("stake"), u64LE(solLamports)]);
+
+  const keys: AccountMeta[] = [
+    { pubkey: user, isSigner: true, isWritable: true },
+    { pubkey: stakingConfig, isSigner: false, isWritable: true },
+    { pubkey: userStakePda(user), isSigner: false, isWritable: true },
+    { pubkey: solVault, isSigner: false, isWritable: true },
+    { pubkey: CONFIG.collateralMint, isSigner: false, isWritable: true },
+    { pubkey: nsolMintAuth, isSigner: false, isWritable: false },
+    { pubkey: userNsolAta, isSigner: false, isWritable: true },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+  ];
+
+  return new TransactionInstruction({
+    programId: CONFIG.stakingProgramId,
+    keys,
+    data: Buffer.from(data),
+  });
+}
+
+/* ---------------------- unstake ---------------------------------------- */
+
+export function buildUnstakeIx(
+  user: PublicKey,
+  nsolLamports: bigint,
+): TransactionInstruction {
+  const { stakingConfig, solVault } = requireStaking();
+  const userNsolAta = getAssociatedTokenAddressSync(CONFIG.collateralMint, user);
+  const data = concat([ixDiscriminator("unstake"), u64LE(nsolLamports)]);
+
+  const keys: AccountMeta[] = [
+    { pubkey: user, isSigner: true, isWritable: true },
+    { pubkey: stakingConfig, isSigner: false, isWritable: true },
+    { pubkey: userStakePda(user), isSigner: false, isWritable: true },
+    { pubkey: user, isSigner: false, isWritable: false }, // owner (has_one)
+    { pubkey: solVault, isSigner: false, isWritable: true },
+    { pubkey: CONFIG.collateralMint, isSigner: false, isWritable: true },
+    { pubkey: userNsolAta, isSigner: false, isWritable: true },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+  ];
+
+  return new TransactionInstruction({
+    programId: CONFIG.stakingProgramId,
+    keys,
+    data: Buffer.from(data),
+  });
+}
+
+/* ---------------------- claim_rewards ---------------------------------- */
+
+export function buildClaimRewardsIx(user: PublicKey): TransactionInstruction {
+  const { stakingConfig, nutMint, nutMintAuth } = requireStaking();
+  const userNutAta = getAssociatedTokenAddressSync(nutMint, user);
+  const data = ixDiscriminator("claim_rewards");
+
+  const keys: AccountMeta[] = [
+    { pubkey: user, isSigner: true, isWritable: true },
+    { pubkey: stakingConfig, isSigner: false, isWritable: true },
+    { pubkey: userStakePda(user), isSigner: false, isWritable: true },
+    { pubkey: user, isSigner: false, isWritable: false }, // owner (has_one)
+    { pubkey: nutMint, isSigner: false, isWritable: true },
+    { pubkey: nutMintAuth, isSigner: false, isWritable: false },
+    { pubkey: userNutAta, isSigner: false, isWritable: true },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+  ];
+
+  return new TransactionInstruction({
+    programId: CONFIG.stakingProgramId,
+    keys,
+    data: Buffer.from(data),
+  });
+}

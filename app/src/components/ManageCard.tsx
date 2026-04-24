@@ -1,19 +1,21 @@
 import { useMemo, useState } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
 import { useMockStore } from "@/mock/data";
 import { useUserPosition } from "@/hooks/useUserPosition";
 import { useProtocolStats } from "@/hooks/useProtocolStats";
 import { useSendTx, useActiveSigner } from "@/hooks/useSendTx";
 import { evaluateHealth } from "@/lib/health";
 import { formatPct, formatToken, formatUsd } from "@/lib/format";
-import { CONFIG, USDC_DECIMALS } from "@/lib/config";
+import { CONFIG, NSOL_DECIMALS, USDC_DECIMALS } from "@/lib/config";
 import {
   buildBorrowIx,
   buildDepositCollateralIx,
   buildRepayIx,
+  buildStakeIx,
+  buildUnstakeIx,
   buildWithdrawCollateralIx,
 } from "@/lib/chain/ix";
 import { humanizeError } from "@/lib/chain/errors";
+import { useStakingState } from "@/hooks/useStakingState";
 import {
   AmountInput,
   AnimatedNumber,
@@ -78,28 +80,69 @@ export function ManageCard({ initialTab = "stake" }: ManageCardProps) {
 /* ----------------------------- Stake ---------------------------------- */
 
 function StakePanel() {
-  // Staking program is deployed but not yet initialized on this cluster
-  // (the bootstrap only set up the lending market). Until a staking
-  // `initialize` is wired, this panel is a read-only preview — the
-  // submit button stays disabled and the user gets a clear message.
-  const { connected } = useWallet();
+  const { publicKey: signerPubkey } = useActiveSigner();
+  const connected = !!signerPubkey;
+  const publicKey = signerPubkey;
   const { data: live } = useUserPosition();
-  const mockPosition = useMockStore((s) => s.position);
-  const position = connected && live ? live.position : mockPosition;
+  const { data: staking } = useStakingState();
+  const sendTx = useSendTx();
 
   const [mode, setMode] = useState<StakeMode>("stake");
   const [amount, setAmount] = useState("");
+  const [txStatus, setTxStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "pending" }
+    | { kind: "success"; sig: string }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
 
-  const exchangeRate = 1.0; // 1:1 until real accrual data is wired
+  const stakingAvailable = !!staking;
+  const exchangeRate = staking?.exchangeRate ?? 1.0; // SOL per nSOL
   const parsed = parseFloat(amount) || 0;
 
   const fromSym: AssetSymbol = mode === "stake" ? "SOL" : "nSOL";
   const toSym: AssetSymbol = mode === "stake" ? "nSOL" : "SOL";
 
+  // stake: receive nSOL = SOL / exchangeRate
+  // unstake: receive SOL = nSOL × exchangeRate
   const receive = mode === "stake" ? parsed / exchangeRate : parsed * exchangeRate;
 
-  const maxAvailable =
-    mode === "stake" ? position.walletSol : position.collateral;
+  const walletSol = live?.position.walletSol ?? 0;
+  const walletNsol = live
+    ? Number(live.walletBalances.nsolLamports) / 10 ** NSOL_DECIMALS
+    : 0;
+  // Reserve 0.01 SOL for fees when max-staking.
+  const maxStakeable = Math.max(0, walletSol - 0.01);
+  const maxUnstakeable = walletNsol;
+  const maxAvailable = mode === "stake" ? maxStakeable : maxUnstakeable;
+
+  const error =
+    parsed > 0 && parsed > maxAvailable ? "Insufficient balance" : null;
+
+  const disabled =
+    !connected || !stakingAvailable || parsed <= 0 || !!error || sendTx.isPending;
+
+  const onSubmit = async () => {
+    if (!publicKey || disabled) return;
+    setTxStatus({ kind: "pending" });
+    try {
+      const lamports = BigInt(Math.round(parsed * 10 ** NSOL_DECIMALS));
+      const ix =
+        mode === "stake"
+          ? buildStakeIx(publicKey, lamports)
+          : buildUnstakeIx(publicKey, lamports);
+      const sig = await sendTx.mutateAsync({
+        instructions: [ix],
+        ensureAtasFor: [CONFIG.collateralMint],
+      });
+      setTxStatus({ kind: "success", sig });
+      setAmount("");
+    } catch (e) {
+      setTxStatus({ kind: "error", message: humanizeError(e) });
+    }
+  };
+
+  const rewardApyPct = staking ? staking.rewardApy * 100 : null;
 
   return (
     <div>
@@ -113,6 +156,7 @@ function StakePanel() {
           onChange={(next) => {
             setMode(next);
             setAmount("");
+            setTxStatus({ kind: "idle" });
           }}
           options={[
             { value: "stake", label: "Stake" },
@@ -125,8 +169,12 @@ function StakePanel() {
         value={amount}
         onChange={setAmount}
         tokenBadge={<TokenBadge symbol={fromSym} />}
-        balanceLabel={`${formatToken(maxAvailable, 4)} ${fromSym}`}
+        balanceLabel={`Wallet ${formatToken(
+          mode === "stake" ? walletSol : walletNsol,
+          4,
+        )} ${fromSym}`}
         onMax={() => setAmount(String(maxAvailable))}
+        error={error ?? undefined}
       />
 
       <Arrow />
@@ -150,25 +198,45 @@ function StakePanel() {
             value: `1 SOL = ${formatToken(1 / exchangeRate, 4)} nSOL`,
           },
           {
-            label: "Stake APY",
-            value: "—",
+            label: "Reward APY",
+            value: rewardApyPct != null ? `${rewardApyPct.toFixed(2)}%` : "—",
+            accent: true,
           },
         ]}
       />
 
       <Button
         variant="primary"
-        onClick={() => {}}
-        disabled
+        onClick={onSubmit}
+        disabled={disabled}
         className="w-full h-12 mt-5 text-base"
       >
-        Staking not initialized
+        {!stakingAvailable
+          ? "Staking not initialized"
+          : sendTx.isPending
+          ? mode === "stake"
+            ? "Staking…"
+            : "Unstaking…"
+          : mode === "stake"
+          ? "Stake SOL"
+          : "Unstake nSOL"}
       </Button>
 
-      <p className="text-xs text-fg-subtle mt-3 text-center">
-        Staking program is deployed but the on-chain `initialize` hasn't
-        been run yet. Borrow side is fully live.
-      </p>
+      {txStatus.kind === "success" && (
+        <p className="text-xs text-accent mt-3 text-center num">
+          ✓ confirmed · {txStatus.sig.slice(0, 8)}…
+        </p>
+      )}
+      {txStatus.kind === "error" && (
+        <div className="mt-3 rounded border border-alert/40 bg-alert/10 px-3 py-2 text-xs text-alert text-center">
+          {txStatus.message}
+        </div>
+      )}
+      {!stakingAvailable && (
+        <p className="text-xs text-fg-subtle mt-3 text-center">
+          Run `yarn bootstrap-all` to initialize the staking program.
+        </p>
+      )}
     </div>
   );
 }

@@ -1,8 +1,11 @@
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useState } from "react";
 import { useUserPosition } from "@/hooks/useUserPosition";
-import { useMockStore } from "@/mock/data";
+import { useStakingState } from "@/hooks/useStakingState";
+import { useActiveSigner, useSendTx } from "@/hooks/useSendTx";
+import { buildClaimRewardsIx } from "@/lib/chain/ix";
+import { humanizeError } from "@/lib/chain/errors";
 import { formatToken, formatUsd } from "@/lib/format";
-import { NSOL_DECIMALS, USDC_DECIMALS } from "@/lib/config";
+import { CONFIG, NSOL_DECIMALS, USDC_DECIMALS } from "@/lib/config";
 import { PageHeader } from "@/components/layout";
 import {
   AnimatedNumber,
@@ -15,30 +18,42 @@ import {
 import { ManageCard } from "@/components/ManageCard";
 
 /**
- * Stake — detail view.
- *
- * The in-card Stake action is disabled until the staking program is
- * initialized on-chain (see ManageCard StakePanel). Until then this
- * page is a read-only preview: the user's wallet balances are live,
- * everything else stays informational.
+ * Stake — detail view. ManageCard below handles stake/unstake; this
+ * page adds the claim button + a live wallet-balance summary.
  */
 export default function Stake() {
-  const { connected } = useWallet();
   const { data: live } = useUserPosition();
-  const mockPosition = useMockStore((s) => s.position);
-  const mockPrices = useMockStore((s) => s.prices);
+  const { data: staking } = useStakingState();
+  const { publicKey } = useActiveSigner();
+  const sendTx = useSendTx();
+  const [err, setErr] = useState<string | null>(null);
+  const [sig, setSig] = useState<string | null>(null);
 
-  const position = connected && live ? live.position : mockPosition;
-  const prices = connected && live ? live.prices : mockPrices;
-
-  // Wallet balances: live when connected, zeros when not.
-  const walletSol = position.walletSol;
+  const walletSol = live?.position.walletSol ?? 0;
   const walletNsol = live
     ? Number(live.walletBalances.nsolLamports) / 10 ** NSOL_DECIMALS
     : 0;
   const walletUsdc = live
     ? Number(live.walletBalances.usdcLamports) / 10 ** USDC_DECIMALS
     : 0;
+
+  const pending = staking?.pendingRewards ?? 0;
+  const canClaim = !!publicKey && !!staking && pending > 0 && !sendTx.isPending;
+
+  const onClaim = async () => {
+    if (!publicKey || !CONFIG.nutMint) return;
+    setErr(null);
+    setSig(null);
+    try {
+      const s = await sendTx.mutateAsync({
+        instructions: [buildClaimRewardsIx(publicKey)],
+        ensureAtasFor: [CONFIG.nutMint],
+      });
+      setSig(s);
+    } catch (e) {
+      setErr(humanizeError(e));
+    }
+  };
 
   return (
     <div>
@@ -57,34 +72,42 @@ export default function Stake() {
               <div className="eyebrow mb-2">Claimable rewards</div>
               <div className="flex items-baseline gap-2">
                 <AnimatedNumber
-                  value={0}
+                  value={pending}
                   format={(v) => formatToken(v, 4)}
                   className="num text-2xl font-medium"
                 />
                 <TokenBadge symbol="NUT" />
               </div>
               <div className="num text-xs text-fg-muted mt-1">
-                Available once staking is initialized.
+                {staking
+                  ? `Earns per second while staked.`
+                  : `Staking not initialized yet.`}
               </div>
+              {err && <div className="text-xs text-alert mt-2">{err}</div>}
+              {sig && (
+                <div className="text-xs text-accent mt-2 num">
+                  ✓ claimed · {sig.slice(0, 8)}…
+                </div>
+              )}
             </div>
             <Button
               variant="primary"
-              onClick={() => {}}
-              disabled
+              onClick={onClaim}
+              disabled={!canClaim}
               className="h-10 px-5"
             >
-              Claim
+              {sendTx.isPending ? "…" : "Claim"}
             </Button>
           </div>
         </Card>
 
         <Card>
           <div className="divide-y divide-border">
-            <BalanceRow symbol="SOL" amount={walletSol} usd={walletSol * prices.sol} />
+            <BalanceRow symbol="SOL" amount={walletSol} usd={walletSol * (live?.prices.sol ?? 0)} />
             <BalanceRow
               symbol="nSOL"
               amount={walletNsol}
-              usd={walletNsol * prices.nsol}
+              usd={walletNsol * (live?.prices.nsol ?? 0)}
             />
             <BalanceRow symbol="USDC" amount={walletUsdc} usd={walletUsdc} />
           </div>

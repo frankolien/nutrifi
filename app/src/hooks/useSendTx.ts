@@ -131,8 +131,13 @@ export function useSendTx() {
       return sig;
     },
     onSuccess: () => {
+      // Invalidate every query that reads chain state so the UI reflects
+      // the post-tx world immediately.
       queryClient.invalidateQueries({ queryKey: ["user-position"] });
       queryClient.invalidateQueries({ queryKey: ["protocol-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["staking-state"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["liquidation-opportunities"] });
     },
   });
 }

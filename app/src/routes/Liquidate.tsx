@@ -6,7 +6,7 @@ import { humanizeError } from "@/lib/chain/errors";
 import { CONFIG, USDC_DECIMALS } from "@/lib/config";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
 import { PageHeader } from "@/components/layout";
-import { AnimatedNumber, Button, Card, TokenMark } from "@/components/primitives";
+import { AnimatedNumber, Button, Card } from "@/components/primitives";
 
 /**
  * Liquidate — real opportunities pulled via `getProgramAccounts`.
