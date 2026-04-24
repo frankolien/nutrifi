@@ -348,7 +348,7 @@ Both programs are deployed to devnet at their original program IDs (same keypair
 | `nutrifi_staking` | `221frxT7k1xFtwd4y7iWimUxiBe97zdte61mX7NTkkt9` |
 | `nutrifi_lending` | `EgYyi4Htyoe7AVDBKfFD8T2LxswDfK6BVYt7vvCXSFtK` |
 
-<!-- TODO: paste the live Vercel URL here once it's deployed -->
+**Live demo**: [nutrifi.vercel.app](https://nutrifi.vercel.app) (devnet). Connect a wallet (Phantom, Solflare, Backpack) that can switch to devnet, grab some devnet SOL from the [faucet](https://faucet.solana.com), and you can stake / borrow / liquidate against the real deployed programs.
 
 ### Redeploying
 
