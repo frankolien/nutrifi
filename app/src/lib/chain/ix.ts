@@ -26,7 +26,11 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 
-import { CONFIG, USER_LOAN_SEED } from "@/lib/config";
+import {
+  CONFIG,
+  USER_LOAN_SEED,
+  USER_STAKE_SEED,
+} from "@/lib/config";
 
 const textEncoder = new TextEncoder();
 
@@ -57,6 +61,35 @@ function userLoanPda(owner: PublicKey): PublicKey {
     CONFIG.lendingProgramId,
   );
   return pda;
+}
+
+function userStakePda(owner: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [USER_STAKE_SEED, owner.toBuffer()],
+    CONFIG.stakingProgramId,
+  );
+  return pda;
+}
+
+function requireStaking() {
+  if (
+    !CONFIG.stakingConfig ||
+    !CONFIG.solVault ||
+    !CONFIG.nsolMintAuthority ||
+    !CONFIG.nutMintAuthority ||
+    !CONFIG.nutMint
+  ) {
+    throw new Error(
+      "staking not initialized — re-run `yarn bootstrap-all` to set up the staking program",
+    );
+  }
+  return {
+    stakingConfig: CONFIG.stakingConfig,
+    solVault: CONFIG.solVault,
+    nsolMintAuth: CONFIG.nsolMintAuthority,
+    nutMintAuth: CONFIG.nutMintAuthority,
+    nutMint: CONFIG.nutMint,
+  };
 }
 
 /* ---------------------- deposit_collateral ----------------------------- */
