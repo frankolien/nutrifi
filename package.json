@@ -9,7 +9,11 @@
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
     "test": "anchor test",
     "test:skip-build": "anchor test --skip-build",
-    "build": "anchor build"
+    "build": "anchor build",
+    "bootstrap": "ts-node --transpile-only scripts/bootstrap-market.ts",
+    "seed-borrower": "ts-node --transpile-only scripts/seed-borrower.ts",
+    "fund-liquidator": "ts-node --transpile-only scripts/fund-liquidator.ts",
+    "push-price": "ts-node --transpile-only scripts/push-price.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

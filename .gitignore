@@ -9,6 +9,7 @@ test-ledger
 .env.local
 dist
 build
+.bootstrap.json
 
 # Personal — not pushed to GitHub
 README.md
