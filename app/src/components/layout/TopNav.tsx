@@ -228,7 +228,7 @@ function EnvChip({ label }: { label: string }) {
         "hidden sm:inline-flex ml-1 num text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded border",
         tone,
       )}
-      title={`Connected to ${CONFIG.cluster}`}
+      title={`App is reading from ${CONFIG.cluster}. Make sure your wallet is set to the same network (Phantom: Settings → Developer Settings → Testnet Mode) or transactions will hang.`}
     >
       {label}
     </span>

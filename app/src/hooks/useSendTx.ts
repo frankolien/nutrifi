@@ -124,10 +124,36 @@ export function useSendTx() {
         const logBlock = inner?.logs?.length ? `\n${inner.logs.join("\n")}` : "";
         throw new Error(`${innerMsg}${logBlock}`);
       }
-      await connection.confirmTransaction(
-        { signature: sig, blockhash, lastValidBlockHeight },
-        "confirmed",
-      );
+      // Race confirmation against a 45s timeout. Without this, a wallet
+      // that silently signs on the wrong network (e.g. Phantom set to
+      // mainnet while the app is on devnet) makes this wait hang for
+      // ~60-90s until the blockhash expires — the UI just shows
+      // "Staking…" with no indication anything's wrong.
+      const cluster = connection.rpcEndpoint;
+      const clusterLabel = /devnet/.test(cluster)
+        ? "devnet"
+        : /testnet/.test(cluster)
+        ? "testnet"
+        : /mainnet/.test(cluster)
+        ? "mainnet"
+        : "localnet";
+      await Promise.race([
+        connection.confirmTransaction(
+          { signature: sig, blockhash, lastValidBlockHeight },
+          "confirmed",
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Transaction wasn't confirmed within 45s. The most common cause is a network mismatch — check that your wallet is set to ${clusterLabel} (not mainnet). Signature: ${sig}`,
+                ),
+              ),
+            45_000,
+          ),
+        ),
+      ]);
       return sig;
     },
     onSuccess: () => {
