@@ -35,19 +35,21 @@ import {
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
-  mintTo,
   getOrCreateAssociatedTokenAccount,
   getAccount,
 } from "@solana/spl-token";
 
 import { NutrifiLending } from "../target/types/nutrifi_lending";
+import { NutrifiStaking } from "../target/types/nutrifi_staking";
 import lendingIdl from "../target/idl/nutrifi_lending.json";
+import stakingIdl from "../target/idl/nutrifi_staking.json";
 
 const USER_LOAN_SEED = Buffer.from("user-loan");
 
 interface Bootstrap {
   cluster: string;
   lendingProgramId: string;
+  stakingProgramId: string;
   nsolMint: string;
   usdcMint: string;
   market: string;
@@ -55,6 +57,11 @@ interface Bootstrap {
   usdcMintAuthority: string;
   oracle: string;
   params: { initialPrice: string };
+  staking?: {
+    config: string;
+    solVault: string;
+    nsolMintAuthority: string;
+  };
 }
 
 function loadBootstrap(): Bootstrap {
@@ -90,6 +97,15 @@ async function main() {
     lendingIdl as unknown as NutrifiLending,
     provider,
   );
+  if (!boot.staking) {
+    throw new Error(
+      ".bootstrap.json has no staking section — run `yarn bootstrap-all` instead of the old lending-only bootstrap.",
+    );
+  }
+  const stakingProgram = new Program<NutrifiStaking>(
+    stakingIdl as unknown as NutrifiStaking,
+    provider,
+  );
 
   const nsolMint = new PublicKey(boot.nsolMint);
   const usdcMint = new PublicKey(boot.usdcMint);
@@ -97,6 +113,9 @@ async function main() {
   const collateralVaultPda = new PublicKey(boot.collateralVault);
   const usdcMintAuthPda = new PublicKey(boot.usdcMintAuthority);
   const oraclePda = new PublicKey(boot.oracle);
+  const stakingConfigPda = new PublicKey(boot.staking.config);
+  const solVaultPda = new PublicKey(boot.staking.solVault);
+  const nsolMintAuthPda = new PublicKey(boot.staking.nsolMintAuthority);
 
   console.log(`cluster: ${boot.cluster}`);
   console.log(`market:  ${marketPda.toBase58()}\n`);
@@ -104,9 +123,10 @@ async function main() {
   // 1. Fresh borrower.
   const borrower = Keypair.generate();
   console.log(`borrower: ${borrower.publicKey.toBase58()}`);
+  // Needs enough for: 10 SOL stake + rent for UserStake/UserLoan/ATAs + tx fees.
   const airdropSig = await connection.requestAirdrop(
     borrower.publicKey,
-    5 * LAMPORTS_PER_SOL,
+    15 * LAMPORTS_PER_SOL,
   );
   await connection.confirmTransaction(airdropSig, "confirmed");
 
@@ -115,18 +135,39 @@ async function main() {
     program.programId,
   );
 
-  // 2. Mint nSOL to the borrower. Admin still holds the nsol mint
-  // authority in the bootstrap (there's no real staking wiring in this
-  // demo), so we can mint directly.
+  // 2. Stake 10 SOL → mints 10 nSOL to the borrower's nSOL ATA.
+  //
+  // After `bootstrap-all`, the nSOL mint is owned by a staking PDA, so
+  // we can't mint directly any more. The real path is: borrower calls
+  // `stake` on the staking program; that CPIs to the token program as
+  // the PDA authority and mints nSOL into their ATA.
   const borrowerNsol = await getOrCreateAssociatedTokenAccount(
     connection,
-    admin, // fee payer
+    admin, // admin pays the ATA rent so the borrower's SOL stays intact for staking
     nsolMint,
     borrower.publicKey,
   );
-  const nsolAmount = 10_000_000_000n; // 10 nSOL (9 decimals)
-  await mintTo(connection, admin, nsolMint, borrowerNsol.address, admin, nsolAmount);
-  console.log(`1/3 minted 10 nSOL to borrower ATA`);
+  const stakeLamports = new BN(10 * LAMPORTS_PER_SOL);
+  const stakeSig = await stakingProgram.methods
+    .stake(stakeLamports)
+    .accountsStrict({
+      user: borrower.publicKey,
+      config: stakingConfigPda,
+      userStake: PublicKey.findProgramAddressSync(
+        [Buffer.from("user-stake"), borrower.publicKey.toBuffer()],
+        stakingProgram.programId,
+      )[0],
+      solVault: solVaultPda,
+      nsolMint: nsolMint,
+      nsolMintAuthority: nsolMintAuthPda,
+      userNsolAccount: borrowerNsol.address,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([borrower])
+    .rpc();
+  console.log(`1/3 staked 10 SOL → 10 nSOL  tx=${stakeSig}`);
+  const nsolAmount = 10_000_000_000n; // same units as we staked, since exchangeRate starts at 1.0
 
   // 3. Deposit all 10 nSOL.
   const depositSig = await program.methods
