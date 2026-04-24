@@ -30,14 +30,14 @@ pub struct InitializeMarket<'info> {
         seeds = [MARKET_SEED],
         bump,
     )]
-    pub market: Account<'info, Market>,
+    pub market: Box<Account<'info, Market>>,
 
-    pub collateral_mint: Account<'info, Mint>,
+    pub collateral_mint: Box<Account<'info, Mint>>,
 
     #[account(
         mint::authority = usdc_mint_authority,
     )]
-    pub debt_mint: Account<'info, Mint>,
+    pub debt_mint: Box<Account<'info, Mint>>,
 
     /// CHECK: oracle PDA address — validated here, initialized separately.
     pub oracle: UncheckedAccount<'info>,
@@ -57,7 +57,7 @@ pub struct InitializeMarket<'info> {
         seeds = [COLLATERAL_VAULT_SEED],
         bump,
     )]
-    pub collateral_vault: Account<'info, TokenAccount>,
+    pub collateral_vault: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,

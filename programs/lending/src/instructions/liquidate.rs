@@ -80,7 +80,7 @@ pub struct Liquidate<'info> {
         bump = market.collateral_vault_bump,
         address = market.collateral_vault @ LendingError::VaultMismatch,
     )]
-    pub collateral_vault: Account<'info, TokenAccount>,
+    pub collateral_vault: Box<Account<'info, TokenAccount>>,
 
     /// Liquidator's USDC — burned to cover debt.
     #[account(
@@ -88,7 +88,7 @@ pub struct Liquidate<'info> {
         token::mint = debt_mint,
         token::authority = liquidator,
     )]
-    pub liquidator_debt_account: Account<'info, TokenAccount>,
+    pub liquidator_debt_account: Box<Account<'info, TokenAccount>>,
 
     /// Liquidator's nSOL — receives seized collateral.
     #[account(
@@ -96,13 +96,18 @@ pub struct Liquidate<'info> {
         token::mint = collateral_mint,
         token::authority = liquidator,
     )]
-    pub liquidator_collateral_account: Account<'info, TokenAccount>,
+    pub liquidator_collateral_account: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
 }
 
 pub fn handler(ctx: Context<Liquidate>, repay_amount: u64) -> Result<()> {
     require!(repay_amount > 0, LendingError::ZeroAmount);
+    require_keys_neq!(
+        ctx.accounts.liquidator.key(),
+        ctx.accounts.borrower.key(),
+        LendingError::SelfLiquidation
+    );
 
     let now = Clock::get()?.unix_timestamp;
     let market = &mut ctx.accounts.market;

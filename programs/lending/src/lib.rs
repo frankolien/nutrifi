@@ -55,7 +55,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("LndNUTriFi1111111111111111111111111111111111");
+declare_id!("EgYyi4Htyoe7AVDBKfFD8T2LxswDfK6BVYt7vvCXSFtK");
 
 #[program]
 pub mod nutrifi_lending {

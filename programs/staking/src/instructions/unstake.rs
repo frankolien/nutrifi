@@ -3,18 +3,16 @@
 //! Symmetric with `stake`. Two subtleties worth calling out:
 //!
 //! * The SOL vault is a *naked system account* owned by the System Program.
-//!   We cannot `CpiContext` a transfer out of it signed by our PDA (the
-//!   System Program's `transfer` instruction requires the signer to be a
-//!   system-owned account without data, which ours is, but `invoke_signed`
-//!   still works). Rather than dealing with that friction, we move lamports
-//!   out by directly mutating the two `lamports` fields — this is the
-//!   standard pattern for PDA-owned system accounts in Anchor programs.
+//!   We pull lamports out via `system_program::transfer` signed by the
+//!   vault PDA's seeds — the runtime forbids direct lamport debits from
+//!   accounts the program doesn't own.
 //!
 //! * We use the *current* exchange rate. If the peg has appreciated (e.g.
 //!   donations to the vault, future slashing protection, etc.) unstakers
 //!   benefit. If it has depreciated, they pay the loss.
 
 use anchor_lang::prelude::*;
+use anchor_lang::system_program::{transfer as sys_transfer, Transfer as SysTransfer};
 use anchor_spl::token::{burn, Burn, Mint, Token, TokenAccount};
 
 use crate::{
@@ -104,23 +102,24 @@ pub fn handler(ctx: Context<Unstake>, nsol_amount: u64) -> Result<()> {
     );
     burn(cpi_ctx, nsol_amount)?;
 
-    // Direct lamport mutation on the PDA system account. See module-level
-    // note — this is the canonical pattern in Anchor for sending lamports
-    // out of a program-owned system account.
-    let vault_ai = ctx.accounts.sol_vault.to_account_info();
-    let user_ai = ctx.accounts.user.to_account_info();
-    let vault_lamports = vault_ai.lamports();
+    // The vault is a system-owned PDA; send lamports out via a signed
+    // `system_program::transfer` rather than direct lamport mutation
+    // (the runtime rejects direct debits from accounts the program doesn't own).
     require!(
-        vault_lamports >= sol_out,
+        ctx.accounts.sol_vault.lamports() >= sol_out,
         StakingError::VaultInsufficientLamports
     );
-    **vault_ai.try_borrow_mut_lamports()? = vault_lamports
-        .checked_sub(sol_out)
-        .ok_or(StakingError::MathOverflow)?;
-    **user_ai.try_borrow_mut_lamports()? = user_ai
-        .lamports()
-        .checked_add(sol_out)
-        .ok_or(StakingError::MathOverflow)?;
+    let vault_bump = config.sol_vault_bump;
+    let signer_seeds: &[&[&[u8]]] = &[&[SOL_VAULT_SEED, &[vault_bump]]];
+    let cpi_ctx = CpiContext::new_with_signer(
+        ctx.accounts.system_program.to_account_info(),
+        SysTransfer {
+            from: ctx.accounts.sol_vault.to_account_info(),
+            to: ctx.accounts.user.to_account_info(),
+        },
+        signer_seeds,
+    );
+    sys_transfer(cpi_ctx, sol_out)?;
 
     // Book-keeping.
     config.total_staked_lamports = config

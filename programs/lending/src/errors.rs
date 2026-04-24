@@ -60,4 +60,7 @@ pub enum LendingError {
 
     #[msg("Seized collateral exceeds the borrower's posted collateral.")]
     SeizeExceedsCollateral,
+
+    #[msg("Liquidator and borrower must be distinct accounts.")]
+    SelfLiquidation,
 }

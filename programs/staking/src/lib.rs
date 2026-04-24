@@ -42,7 +42,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("StkNUTriFi1111111111111111111111111111111111");
+declare_id!("221frxT7k1xFtwd4y7iWimUxiBe97zdte61mX7NTkkt9");
 
 #[program]
 pub mod nutrifi_staking {
