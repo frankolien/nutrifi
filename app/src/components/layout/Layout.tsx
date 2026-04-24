@@ -2,8 +2,19 @@ import { useMemo } from "react";
 import { Outlet } from "react-router-dom";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { loadDevKeypair } from "@/lib/chain/devSigner";
+import { useSlot } from "@/hooks/useSlot";
+import { CONFIG } from "@/lib/config";
 import { TopNav } from "./TopNav";
 import { ConnectPrompt } from "./ConnectPrompt";
+
+// Mirrors the cluster-label logic used by EnvChip in TopNav.
+function clusterLabel(url: string): string {
+  if (/127\.0\.0\.1|localhost/.test(url)) return "Localnet";
+  if (/devnet/.test(url)) return "Devnet";
+  if (/testnet/.test(url)) return "Testnet";
+  if (/mainnet|api\.mainnet-beta/.test(url)) return "Mainnet";
+  return "Custom";
+}
 
 /**
  * Layout — top-level chrome for every route.
@@ -28,7 +39,7 @@ export function Layout() {
       <BackgroundAtmosphere />
       <div className="relative z-10 flex flex-col flex-1">
         <TopNav />
-        <main className="flex-1 w-full max-w-page mx-auto px-6 py-10">
+        <main className="flex-1 w-full max-w-page mx-auto px-4 sm:px-6 py-6 sm:py-10">
           {effectivelyConnected ? <Outlet /> : <ConnectPrompt />}
         </main>
         <Footer />
@@ -88,11 +99,13 @@ function BackgroundAtmosphere() {
 }
 
 function Footer() {
+  const { data: slot, isError } = useSlot();
+  const isLive = typeof slot === "number" && !isError;
   return (
     <footer className="border-t border-border">
-      <div className="max-w-page mx-auto px-6 py-6 flex items-center justify-between text-xs text-fg-subtle">
-        <span>NutriFi · Devnet</span>
-        <div className="flex gap-6">
+      <div className="max-w-page mx-auto px-4 sm:px-6 py-6 flex flex-wrap items-center justify-between gap-3 text-xs text-fg-subtle">
+        <span>NutriFi · {clusterLabel(CONFIG.cluster)}</span>
+        <div className="flex items-center flex-wrap gap-x-4 gap-y-2 sm:gap-6">
           <a className="hover:text-fg transition-colors" href="#">
             Docs
           </a>
@@ -102,6 +115,26 @@ function Footer() {
           <a className="hover:text-fg transition-colors" href="#">
             Terms
           </a>
+          <span
+            className="flex items-center gap-1.5 num tabular-nums"
+            title={`Cluster: ${CONFIG.cluster}`}
+          >
+            <span
+              className={
+                isLive
+                  ? "inline-flex h-1.5 w-1.5 rounded-full bg-accent"
+                  : "inline-flex h-1.5 w-1.5 rounded-full bg-alert"
+              }
+            />
+            {isLive ? (
+              <>
+                <span className="text-fg-muted">live · synced block</span>
+                <span className="text-fg">{slot!.toLocaleString("en-US")}</span>
+              </>
+            ) : (
+              <span className="text-alert/80">RPC unreachable</span>
+            )}
+          </span>
         </div>
       </div>
     </footer>

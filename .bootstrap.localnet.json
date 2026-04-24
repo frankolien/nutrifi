@@ -1,5 +1,5 @@
 {
-  "cluster": "https://api.devnet.solana.com",
+  "cluster": "http://127.0.0.1:8899",
   "payer": "AxMZj6QHB4Zxe7wpUCidh1cS7ueN2MGsiWLKCMokTA64",
   "stakingProgramId": "221frxT7k1xFtwd4y7iWimUxiBe97zdte61mX7NTkkt9",
   "lendingProgramId": "EgYyi4Htyoe7AVDBKfFD8T2LxswDfK6BVYt7vvCXSFtK",
@@ -10,13 +10,13 @@
     "nutMintAuthority": "4M3LdCGkY5fzA1sEdJFJBRZyhjYBipU3mhQFNFZsmAL4",
     "rewardRate": "100000000000"
   },
-  "nsolMint": "DNd2LsyCCd52ESHvfRh4jP5BsCxrDUHXRBAGiEwBHGTt",
-  "nutMint": "Eb8Msf51n34oamDsBztRtG6JN6roBaCkecXBaAkLT9Xn",
-  "usdcMint": "C8pfkmUd2qFkYt8KDX9jpqETQcFVnyoggGoRm3R2n5NE",
+  "nsolMint": "HfJfdB5xmXmHDgzBRT8NkotqG3ij5zdLrZzKuaZX6uMj",
+  "nutMint": "5VxqoWfgdEiRUAxGGck9kBp9Y4CkkTRhVkfKboacJZvs",
+  "usdcMint": "FE7Ue6sfFWPxCRPWodwCb6gqCYTs31KPYWsJYEPi3ZsC",
   "market": "2sCp2E5DQZUzPDjTYeodpT2FyoQGstnPTLemhjxKEYuY",
   "collateralVault": "CfKEeiMAWDvRaTvSv6Nfy4CgoZ8dU9s2qvRCY3cBLTEU",
   "usdcMintAuthority": "9iXdGEsxMDtJ6X4wigP4KFSzwVyKf9YKocK9oNNpKtjQ",
-  "oracle": "8gPv7uniuPfcLgwwWZ59iG49YQ2Vid3KeVczmhrfFbxf",
+  "oracle": "Hbuqd6K9trZ5hbrtWGxnXYSw9kwzatwexXSyx5yFRMbU",
   "params": {
     "initialPrice": "150",
     "maxStalenessSeconds": 300,
@@ -26,5 +26,5 @@
     "liquidationBonusBps": 500,
     "closeFactorBps": 5000
   },
-  "bootstrappedAt": "2026-04-24T12:50:00.195Z"
+  "bootstrappedAt": "2026-04-24T12:06:46.125Z"
 }

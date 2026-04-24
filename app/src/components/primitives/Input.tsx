@@ -21,9 +21,18 @@ interface AmountInputProps
   tokenBadge: ReactNode;
   balanceLabel?: string;
   onMax?: () => void;
+  /**
+   * Max value in the user's units (whole tokens / USD). When provided
+   * the 25/50/75/MAX chip row is rendered; the input is set to a
+   * fraction of this number. Required for the chips — without it we'd
+   * only show MAX.
+   */
+  maxValue?: number;
   hint?: ReactNode;
   error?: string;
 }
+
+const CHIP_FRACTIONS = [0.25, 0.5, 0.75] as const;
 
 export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
   (
@@ -33,6 +42,7 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
       tokenBadge,
       balanceLabel,
       onMax,
+      maxValue,
       hint,
       error,
       placeholder = "0.00",
@@ -40,6 +50,21 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
     },
     ref,
   ) => {
+    // Chips only make sense when we know both the ceiling and how to
+    // set an arbitrary fraction of it. `onMax` alone gives us MAX; the
+    // fractional chips also need the numeric cap.
+    const showChips =
+      !!onMax && typeof maxValue === "number" && isFinite(maxValue) && maxValue > 0;
+
+    const setFraction = (frac: number) => {
+      if (typeof maxValue !== "number") return;
+      // Truncate rather than round so the chip never pushes above the
+      // real balance (which the chain would then reject).
+      const raw = maxValue * frac;
+      const trimmed = Math.floor(raw * 1e6) / 1e6;
+      onChange(String(trimmed));
+    };
+
     return (
       <div>
         <div
@@ -61,19 +86,40 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
             className="num flex-1 min-w-0 text-3xl font-medium tabular-nums placeholder:text-fg-dim"
             {...rest}
           />
-          <div className="flex items-center gap-2">
-            {tokenBadge}
-            {onMax && (
-              <button
-                type="button"
-                onClick={onMax}
-                className="text-2xs uppercase tracking-[0.12em] text-fg-muted hover:text-fg px-2 py-1 rounded transition-colors"
-              >
-                Max
-              </button>
-            )}
-          </div>
+          <div className="flex items-center gap-2">{tokenBadge}</div>
         </div>
+
+        {showChips ? (
+          <div className="mt-2 flex items-center gap-1.5">
+            {CHIP_FRACTIONS.map((frac) => (
+              <button
+                key={frac}
+                type="button"
+                onClick={() => setFraction(frac)}
+                className="flex-1 text-2xs uppercase tracking-[0.12em] text-fg-muted hover:text-fg hover:bg-fg/[0.04] border border-border rounded h-7 transition-colors"
+              >
+                {Math.round(frac * 100)}%
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={onMax}
+              className="flex-1 text-2xs uppercase tracking-[0.12em] text-accent hover:text-accent hover:bg-accent/10 border border-accent/40 rounded h-7 transition-colors"
+            >
+              Max
+            </button>
+          </div>
+        ) : onMax ? (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={onMax}
+              className="text-2xs uppercase tracking-[0.12em] text-accent hover:bg-accent/10 border border-accent/40 rounded h-7 px-3 transition-colors"
+            >
+              Max
+            </button>
+          </div>
+        ) : null}
 
         {(balanceLabel || hint || error) && (
           <div className="flex items-center justify-between mt-2 text-xs">

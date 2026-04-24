@@ -78,47 +78,123 @@ export default function Activity() {
       />
 
       <Card>
-        <table className="w-full">
-          <thead>
-            <tr className="eyebrow text-left border-b border-border">
-              <th className="px-6 py-4 font-normal">When</th>
-              <th className="px-6 py-4 font-normal">Action</th>
-              <th className="px-6 py-4 font-normal">Detail</th>
-              <th className="px-6 py-4 font-normal text-right">Signature</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-6 py-16 text-center text-sm text-fg-muted"
-                >
-                  Loading your activity…
-                </td>
+        {isLoading && rows.length === 0 ? (
+          <EmptyState
+            icon={<ClockIcon />}
+            title="Loading your activity…"
+            body="Fetching signatures from your UserLoan PDA."
+          />
+        ) : filtered.length === 0 ? (
+          rows.length === 0 ? (
+            <EmptyState
+              icon={<ReceiptIcon />}
+              title="No activity yet"
+              body={
+                <>
+                  Your first deposit, borrow, or stake will land here.
+                  <br />
+                  Head to the dashboard to open a position.
+                </>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<FilterIcon />}
+              title="Nothing matches this filter"
+              body="Try a different tab to see other actions."
+            />
+          )
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="eyebrow text-left border-b border-border">
+                <th className="px-6 py-4 font-normal">When</th>
+                <th className="px-6 py-4 font-normal">Action</th>
+                <th className="px-6 py-4 font-normal">Detail</th>
+                <th className="px-6 py-4 font-normal text-right">Signature</th>
               </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-6 py-16 text-center text-sm text-fg-muted"
-                >
-                  No transactions match this filter.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((r, i) => (
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => (
                 <Row
                   key={r.signature}
                   item={r}
                   isLast={i === filtered.length - 1}
                 />
-              ))
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Card>
     </div>
+  );
+}
+
+function EmptyState({
+  icon,
+  title,
+  body,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center text-center px-6 py-20">
+      <div className="w-12 h-12 rounded-full border border-border bg-fg/[0.02] flex items-center justify-center text-fg-muted mb-4">
+        {icon}
+      </div>
+      <div className="text-sm text-fg mb-1.5">{title}</div>
+      <div className="text-xs text-fg-muted leading-relaxed max-w-xs">
+        {body}
+      </div>
+    </div>
+  );
+}
+
+function ReceiptIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M5 3h10v14l-2.5-1.5L10 17l-2.5-1.5L5 17V3Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 7h4M8 10h4"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M3 5h14l-5.5 7v4l-3 1v-5L3 5Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M10 6v4l2.5 2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

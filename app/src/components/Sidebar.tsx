@@ -27,7 +27,7 @@ const KIND_META: Record<ActivityKind, { label: string; color: string }> = {
 
 export function Sidebar() {
   return (
-    <div className="w-full max-w-xs flex flex-col gap-4">
+    <div className="w-full lg:max-w-xs flex flex-col gap-4">
       <OracleCard />
       <BalancesCard />
       <ActivityCard />

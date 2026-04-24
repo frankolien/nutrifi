@@ -58,7 +58,7 @@ export function ManageCard({ initialTab = "stake" }: ManageCardProps) {
 
   return (
     <div className="w-full max-w-action mx-auto">
-      <div className="rounded-lg border border-border bg-surface/60 backdrop-blur-sm p-5 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_20px_60px_-30px_rgba(0,0,0,0.6)]">
+      <div className="rounded-lg border border-border bg-surface/60 backdrop-blur-sm p-4 sm:p-5 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_20px_60px_-30px_rgba(0,0,0,0.6)]">
         <SegmentedControl<TopTab>
           value={tab}
           onChange={setTab}
@@ -174,6 +174,7 @@ function StakePanel() {
           4,
         )} ${fromSym}`}
         onMax={() => setAmount(String(maxAvailable))}
+        maxValue={maxAvailable}
         error={error ?? undefined}
       />
 
@@ -201,6 +202,14 @@ function StakePanel() {
             label: "Reward APY",
             value: rewardApyPct != null ? `${rewardApyPct.toFixed(2)}%` : "—",
             accent: true,
+          },
+          {
+            label: mode === "stake" ? "Lockup" : "Cooldown",
+            value: "Instant",
+          },
+          {
+            label: "Network fee",
+            value: "~0.000005 SOL",
           },
         ]}
       />
@@ -417,6 +426,7 @@ function BorrowPanel() {
             ? () => setAmount(String(maxAvailable))
             : undefined
         }
+        maxValue={Number.isFinite(maxAvailable) ? maxAvailable : undefined}
         error={error ?? undefined}
       />
 
@@ -465,6 +475,22 @@ function BorrowPanel() {
                 {borrowAprPct.toFixed(2)}%
               </span>
             ),
+          },
+          {
+            label: "Liquidation at",
+            value: (
+              <span className="num">
+                $
+                {previewHealth.liquidationPriceUsd > 0
+                  ? formatUsd(previewHealth.liquidationPriceUsd, 2)
+                  : "—"}
+                <span className="text-fg-muted"> / nSOL</span>
+              </span>
+            ),
+          },
+          {
+            label: "Network fee",
+            value: "~0.000005 SOL",
           },
         ]}
       />

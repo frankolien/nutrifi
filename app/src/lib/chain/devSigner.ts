@@ -27,6 +27,11 @@ function parseSecret(raw: string): Uint8Array {
 }
 
 export function loadDevKeypair(): Keypair | null {
+  // Production builds must NEVER load a dev signer — even if a stray
+  // env var survives into the bundle, the static PROD check gets
+  // dead-code-eliminated by esbuild/terser so the JSON.parse path
+  // isn't reachable at all.
+  if (import.meta.env.PROD) return null;
   const raw = import.meta.env.VITE_DEV_SIGNER_SECRET;
   if (!raw) return null;
   return Keypair.fromSecretKey(parseSecret(raw));
